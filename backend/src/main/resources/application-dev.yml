@@ -1,0 +1,44 @@
+﻿# File responsibility: Defines development-profile database, logging, security, and API settings.
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        generate_statistics: false
+
+  datasource:
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+
+logging:
+  level:
+    root: INFO
+    com.taskmanager: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
+
+# Development JWT Secret (NOT FOR PRODUCTION)
+jwt:
+  secret: "dev-secret-key-minimum-64-characters-long-please-change-before-production"
+  expiration: 900000
+  refresh-expiration: 604800000

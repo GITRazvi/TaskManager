@@ -1,0 +1,14 @@
+target/
+.mvn/
+*.iml
+
+.git/
+.github/
+.vscode/
+
+logs/
+*.log
+
+README.md
+Dockerfile
+.dockerignore

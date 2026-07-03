@@ -1,0 +1,39 @@
+﻿# File responsibility: Defines test-profile settings for isolated backend test execution.
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.H2Dialect
+
+  datasource:
+    url: jdbc:h2:mem:testdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+    hikari:
+      maximum-pool-size: 2
+
+  flyway:
+    enabled: false
+
+  h2:
+    console:
+      enabled: true
+
+logging:
+  level:
+    root: WARN
+    com.taskmanager: DEBUG
+    org.springframework.test: DEBUG
+
+server:
+  port: 8080
+
+jwt:
+  secret: "test-secret-key-minimum-64-characters-long-for-testing-purposes-only"
+  expiration: 900000
+  refresh-expiration: 604800000
