@@ -1,7 +1,8 @@
+import { useMemo, useState } from "react";
 import { getApiErrorMessage } from "../../api/client";
 import { useSprintBoard } from "../../hooks/useSprints";
 import { useUpdateTaskStatus } from "../../hooks/useTasks";
-import type { Task, TaskStatus } from "../../types";
+import type { Task, TaskStatus, User } from "../../types";
 import { Loading } from "../Common/Loading";
 import { TaskCard } from "../Tasks/TaskCard";
 
@@ -11,9 +12,24 @@ const columns: Array<{ key: "todo" | "inProgress" | "done"; label: string; statu
   { key: "done", label: "Done", status: "DONE" }
 ];
 
-export function SprintBoard({ sprintId }: { sprintId?: string }) {
+export function SprintBoard({ sprintId, users }: { sprintId?: string; users: User[] }) {
   const board = useSprintBoard(sprintId);
   const updateStatus = useUpdateTaskStatus();
+  const [draggedTask, setDraggedTask] = useState<{ id: string; status: TaskStatus } | null>(null);
+  const [dropTarget, setDropTarget] = useState<TaskStatus | null>(null);
+  const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
+
+  const handleDrop = (status: TaskStatus) => {
+    if (!draggedTask || draggedTask.status === status || updateStatus.isLoading) {
+      setDraggedTask(null);
+      setDropTarget(null);
+      return;
+    }
+
+    updateStatus.mutate({ id: draggedTask.id, status });
+    setDraggedTask(null);
+    setDropTarget(null);
+  };
 
   if (!sprintId) {
     return <p className="empty-state">Create or select a sprint to open the board.</p>;
@@ -32,7 +48,27 @@ export function SprintBoard({ sprintId }: { sprintId?: string }) {
       {columns.map((column) => {
         const tasks = (board.data?.[column.key] ?? []) as Task[];
         return (
-          <section className="board-column" key={column.key}>
+          <section
+            className={`board-column${dropTarget === column.status ? " board-column-drop-target" : ""}`}
+            key={column.key}
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+            }}
+            onDragEnter={(event) => {
+              event.preventDefault();
+              setDropTarget(column.status);
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setDropTarget(null);
+              }
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              handleDrop(column.status);
+            }}
+          >
             <div className="board-column-header">
               <h2>{column.label}</h2>
               <span>{tasks.length}</span>
@@ -42,6 +78,18 @@ export function SprintBoard({ sprintId }: { sprintId?: string }) {
                 <TaskCard
                   key={task.id}
                   task={task}
+                  assignee={task.assignedToId ? usersById.get(task.assignedToId) : undefined}
+                  draggable
+                  isDragging={draggedTask?.id === task.id}
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", task.id);
+                    setDraggedTask({ id: task.id, status: task.status });
+                  }}
+                  onDragEnd={() => {
+                    setDraggedTask(null);
+                    setDropTarget(null);
+                  }}
                   onStatusChange={(status) => updateStatus.mutate({ id: task.id, status })}
                 />
               ))}

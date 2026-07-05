@@ -12,6 +12,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface TaskRepository extends JpaRepository<Task, UUID>, JpaSpecificationExecutor<Task> {
     /**
@@ -23,6 +25,19 @@ public interface TaskRepository extends JpaRepository<Task, UUID>, JpaSpecificat
      * Finds a task by id only when it is owned by {@code userId}.
      */
     Optional<Task> findByIdAndUserId(UUID id, UUID userId);
+
+    /**
+     * Finds a task when {@code userId} owns it or can access its sprint.
+     */
+    @Query("""
+            select distinct task
+            from Task task
+            left join task.sprint sprint
+            left join sprint.participants participant
+            where task.id = :id
+              and (task.user.id = :userId or sprint.user.id = :userId or participant.id = :userId)
+            """)
+    Optional<Task> findVisibleByIdAndUserId(@Param("id") UUID id, @Param("userId") UUID userId);
 
     /**
      * Finds all tasks assigned to the sprint identified by {@code sprintId}.

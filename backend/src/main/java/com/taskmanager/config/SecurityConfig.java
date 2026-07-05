@@ -28,6 +28,9 @@ public class SecurityConfig {
     @Value("${spring.web.cors.allowed-origins:http://localhost:3000,http://localhost:5173}")
     private List<String> allowedOrigins;
 
+    @Value("${spring.web.cors.allowed-origin-patterns:}")
+    private List<String> allowedOriginPatterns;
+
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
 
     /**
@@ -69,7 +72,8 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(allowedOrigins);
+        configuration.setAllowedOrigins(nonBlank(allowedOrigins));
+        configuration.setAllowedOriginPatterns(nonBlank(allowedOriginPatterns));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
@@ -86,5 +90,12 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder(12);
+    }
+
+    private List<String> nonBlank(List<String> values) {
+        return values.stream()
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .toList();
     }
 }

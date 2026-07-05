@@ -34,6 +34,20 @@ export function useUpdateSprint() {
   });
 }
 
+export function useDeleteSprint() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => sprintsApi.deleteSprint(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["sprints"] });
+      void queryClient.invalidateQueries({ queryKey: ["sprint-board"] });
+      void queryClient.invalidateQueries({ queryKey: ["sprint-stats"] });
+      void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    }
+  });
+}
+
 export function useSprintBoard(sprintId?: string) {
   return useQuery({
     queryKey: ["sprint-board", sprintId],

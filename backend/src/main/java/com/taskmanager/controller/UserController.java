@@ -8,6 +8,7 @@ import com.taskmanager.dto.UserResponse;
 import com.taskmanager.security.UserPrincipal;
 import com.taskmanager.service.UserService;
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -28,6 +29,17 @@ public class UserController {
      */
     public UserController(UserService userService) {
         this.userService = userService;
+    }
+
+    /**
+     * Lists active users that can be selected as task assignees.
+     */
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<UserResponse>>> getUsers() {
+        return ResponseEntity.ok(ApiResponse.success(
+                userService.getActiveUsers(),
+                "Users retrieved successfully"
+        ));
     }
 
     /**

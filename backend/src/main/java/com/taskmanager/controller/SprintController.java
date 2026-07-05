@@ -16,6 +16,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -94,6 +95,18 @@ public class SprintController {
                 sprintService.updateSprint(id, principal.getId(), request),
                 "Sprint updated successfully"
         ));
+    }
+
+    /**
+     * Deletes a sprint identified by {@code id}; only the sprint owner can delete it.
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteSprint(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal principal
+    ) {
+        sprintService.deleteSprint(id, principal.getId());
+        return ResponseEntity.ok(ApiResponse.success(null, "Sprint deleted successfully"));
     }
 
     /**

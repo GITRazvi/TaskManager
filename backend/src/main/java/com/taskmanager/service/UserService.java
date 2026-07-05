@@ -9,6 +9,7 @@ import com.taskmanager.exception.AppException;
 import com.taskmanager.exception.ForbiddenException;
 import com.taskmanager.exception.ResourceNotFoundException;
 import com.taskmanager.repository.UserRepository;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -36,6 +37,17 @@ public class UserService {
         return userRepository.findById(userId)
                 .filter(User::isActive)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+    }
+
+    /**
+     * Returns all active users available for task assignment.
+     */
+    @Transactional(readOnly = true)
+    public List<UserResponse> getActiveUsers() {
+        return userRepository.findByActiveTrueOrderByFullNameAscUsernameAsc()
+                .stream()
+                .map(UserResponse::from)
+                .toList();
     }
 
     /**

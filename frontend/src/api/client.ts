@@ -13,8 +13,10 @@ export const apiClient = axios.create({
 
 apiClient.interceptors.request.use((config) => {
   const token = useAuthStore.getState().accessToken;
+  const requestUrl = config.url ?? "";
+  const isAuthRequest = requestUrl.includes("/auth/login") || requestUrl.includes("/auth/register");
 
-  if (token) {
+  if (token && !isAuthRequest) {
     config.headers.Authorization = `Bearer ${token}`;
   }
 

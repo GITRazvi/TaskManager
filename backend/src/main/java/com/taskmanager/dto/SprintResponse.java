@@ -5,6 +5,8 @@ import com.taskmanager.entity.Sprint;
 import com.taskmanager.entity.enums.SprintStatus;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.List;
 import java.util.UUID;
 
 public record SprintResponse(
@@ -16,6 +18,7 @@ public record SprintResponse(
         LocalDate endDate,
         SprintStatus status,
         int taskCount,
+        List<UserResponse> participants,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
@@ -32,6 +35,10 @@ public record SprintResponse(
                 sprint.getEndDate(),
                 sprint.getStatus(),
                 sprint.getTasks() == null ? 0 : sprint.getTasks().size(),
+                sprint.getParticipants() == null ? List.of() : sprint.getParticipants().stream()
+                        .map(UserResponse::from)
+                        .sorted(Comparator.comparing(UserResponse::username, String.CASE_INSENSITIVE_ORDER))
+                        .toList(),
                 sprint.getCreatedAt(),
                 sprint.getUpdatedAt()
         );

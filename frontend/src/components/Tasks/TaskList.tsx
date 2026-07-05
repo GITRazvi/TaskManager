@@ -1,16 +1,17 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { getApiErrorMessage } from "../../api/client";
 import { useDeleteTask, useTasks, useUpdateTaskStatus } from "../../hooks/useTasks";
-import type { Task, TaskFilters as Filters } from "../../types";
+import type { Task, TaskFilters as Filters, User } from "../../types";
 import { Loading } from "../Common/Loading";
 import { TaskCard } from "./TaskCard";
 import { TaskFilters } from "./TaskFilters";
 
-export function TaskList({ onEdit }: { onEdit: (task: Task) => void }) {
+export function TaskList({ users, onEdit }: { users: User[]; onEdit: (task: Task) => void }) {
   const [filters, setFilters] = useState<Filters>({ page: 0, size: 20 });
   const tasks = useTasks(filters);
   const updateStatus = useUpdateTaskStatus();
   const deleteTask = useDeleteTask();
+  const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
 
   return (
     <section className="content-section">
@@ -29,6 +30,7 @@ export function TaskList({ onEdit }: { onEdit: (task: Task) => void }) {
           <TaskCard
             key={task.id}
             task={task}
+            assignee={task.assignedToId ? usersById.get(task.assignedToId) : undefined}
             onEdit={() => onEdit(task)}
             onDelete={() => deleteTask.mutate(task.id)}
             onStatusChange={(status) => updateStatus.mutate({ id: task.id, status })}

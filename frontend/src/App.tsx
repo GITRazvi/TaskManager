@@ -1,7 +1,9 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
 import { AppLayout } from "./components/Common/AppLayout";
 import { ProtectedRoute } from "./components/Common/ProtectedRoute";
 import { useAuthStore } from "./store/authStore";
+import { useThemeStore } from "./store/themeStore";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
@@ -15,6 +17,12 @@ function PublicOnly({ children }: { children: JSX.Element }) {
 }
 
 export default function App() {
+  const theme = useThemeStore((state) => state.theme);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
   return (
     <Routes>
       <Route

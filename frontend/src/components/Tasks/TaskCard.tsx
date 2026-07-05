@@ -1,5 +1,6 @@
-import { CalendarDays, Check, Circle, Pencil, Trash2 } from "lucide-react";
-import type { Task, TaskStatus } from "../../types";
+import { CalendarDays, Check, Circle, Pencil, Trash2, UserRound } from "lucide-react";
+import type { DragEventHandler } from "react";
+import type { Task, TaskStatus, User } from "../../types";
 
 const statusOptions: TaskStatus[] = ["TODO", "IN_PROGRESS", "DONE"];
 
@@ -11,17 +12,34 @@ const statusLabels: Record<TaskStatus, string> = {
 
 export function TaskCard({
   task,
+  assignee,
+  draggable,
+  isDragging,
+  onDragStart,
+  onDragEnd,
   onStatusChange,
   onEdit,
   onDelete
 }: {
   task: Task;
+  assignee?: User;
+  draggable?: boolean;
+  isDragging?: boolean;
+  onDragStart?: DragEventHandler<HTMLElement>;
+  onDragEnd?: DragEventHandler<HTMLElement>;
   onStatusChange: (status: TaskStatus) => void;
   onEdit?: () => void;
   onDelete?: () => void;
 }) {
+  const assigneeName = assignee?.fullName || assignee?.username;
+
   return (
-    <article className="task-card">
+    <article
+      className={`task-card${isDragging ? " task-card-dragging" : ""}`}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+    >
       <div className="task-card-header">
         <div>
           <p className="task-title">{task.title}</p>
@@ -40,6 +58,12 @@ export function TaskCard({
           <span>
             <CalendarDays aria-hidden="true" />
             {task.dueDate}
+          </span>
+        )}
+        {assigneeName && (
+          <span>
+            <UserRound aria-hidden="true" />
+            {assigneeName}
           </span>
         )}
       </div>

@@ -20,8 +20,10 @@ import com.taskmanager.repository.TaskRepository;
 import com.taskmanager.repository.UserRepository;
 import java.time.LocalDate;
 import java.util.EnumMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
@@ -62,18 +64,19 @@ public class SprintService {
         sprint.setStartDate(request.startDate());
         sprint.setEndDate(request.endDate());
         sprint.setStatus(SprintStatus.PLANNING);
+        sprint.setParticipants(resolveParticipants(request.participantIdentifiers(), user));
 
         return SprintResponse.from(sprintRepository.save(sprint));
     }
 
     /**
-     * Returns all sprints owned by {@code userId}, optionally filtering by the provided sprint {@code status}.
+     * Returns all sprints visible to {@code userId}, optionally filtering by the provided sprint {@code status}.
      */
     @Transactional(readOnly = true)
     public List<SprintResponse> getUserSprints(UUID userId, SprintStatus status) {
         List<Sprint> sprints = status == null
-                ? sprintRepository.findAllByUserId(userId)
-                : sprintRepository.findAllByUserIdAndStatus(userId, status);
+                ? sprintRepository.findAllAccessibleByUserId(userId)
+                : sprintRepository.findAllAccessibleByUserIdAndStatus(userId, status);
 
         return sprints.stream()
                 .map(SprintResponse::from)
@@ -85,7 +88,7 @@ public class SprintService {
      */
     @Transactional(readOnly = true)
     public SprintResponse getSprintById(UUID sprintId, UUID userId) {
-        return SprintResponse.from(getOwnedSprint(sprintId, userId));
+        return SprintResponse.from(getAccessibleSprint(sprintId, userId));
     }
 
     /**
@@ -116,6 +119,9 @@ public class SprintService {
         if (request.status() != null) {
             sprint.setStatus(request.status());
         }
+        if (request.participantIdentifiers() != null) {
+            sprint.setParticipants(resolveParticipants(request.participantIdentifiers(), sprint.getUser()));
+        }
 
         return SprintResponse.from(sprint);
     }
@@ -125,7 +131,7 @@ public class SprintService {
      */
     @Transactional(readOnly = true)
     public SprintBoardResponse getSprintBoard(UUID sprintId, UUID userId) {
-        getOwnedSprint(sprintId, userId);
+        getAccessibleSprint(sprintId, userId);
         Map<TaskStatus, List<TaskResponse>> tasksByStatus = taskRepository.findAllBySprintId(sprintId).stream()
                 .collect(Collectors.groupingBy(Task::getStatus, () -> new EnumMap<>(TaskStatus.class),
                         Collectors.mapping(TaskResponse::from, Collectors.toList())));
@@ -143,7 +149,7 @@ public class SprintService {
      */
     @Transactional(readOnly = true)
     public SprintStatsResponse getSprintStats(UUID sprintId, UUID userId) {
-        getOwnedSprint(sprintId, userId);
+        getAccessibleSprint(sprintId, userId);
         List<Task> tasks = taskRepository.findAllBySprintId(sprintId);
         long totalTasks = tasks.size();
         long completedTasks = tasks.stream()
@@ -165,11 +171,55 @@ public class SprintService {
     }
 
     /**
+     * Deletes a sprint owned by {@code userId}; linked tasks are detached by the database foreign-key rule.
+     */
+    @Transactional
+    public void deleteSprint(UUID sprintId, UUID userId) {
+        sprintRepository.delete(getOwnedSprint(sprintId, userId));
+    }
+
+    /**
      * Finds a sprint by both {@code sprintId} and {@code userId}, preventing cross-user access to sprint data.
      */
     private Sprint getOwnedSprint(UUID sprintId, UUID userId) {
         return sprintRepository.findByIdAndUserId(sprintId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Sprint not found"));
+    }
+
+    /**
+     * Finds a sprint by both {@code sprintId} and {@code userId}, allowing owners and sprint participants.
+     */
+    private Sprint getAccessibleSprint(UUID sprintId, UUID userId) {
+        return sprintRepository.findAccessibleByIdAndUserId(sprintId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Sprint not found"));
+    }
+
+    /**
+     * Resolves usernames or email addresses to active sprint participants, always including the sprint owner.
+     */
+    private Set<User> resolveParticipants(List<String> participantIdentifiers, User owner) {
+        Set<User> participants = new LinkedHashSet<>();
+        participants.add(owner);
+
+        if (participantIdentifiers == null) {
+            return participants;
+        }
+
+        for (String rawIdentifier : participantIdentifiers) {
+            if (rawIdentifier == null || rawIdentifier.isBlank()) {
+                continue;
+            }
+            String identifier = rawIdentifier.trim();
+            User participant = userRepository.findActiveByUsernameOrEmail(identifier)
+                    .orElseThrow(() -> new AppException(
+                            HttpStatus.BAD_REQUEST,
+                            "SPRINT_MEMBER_NOT_FOUND",
+                            "No active user found for sprint member: " + identifier
+                    ));
+            participants.add(participant);
+        }
+
+        return participants;
     }
 
     /**

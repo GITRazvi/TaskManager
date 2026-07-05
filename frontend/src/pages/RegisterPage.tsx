@@ -1,10 +1,14 @@
 import { CheckSquare } from "lucide-react";
 import { RegisterForm } from "../components/Auth/RegisterForm";
+import { ThemeToggle } from "../components/Common/ThemeToggle";
 
 export function RegisterPage() {
   return (
     <main className="auth-page">
       <section className="auth-panel">
+        <div className="auth-actions">
+          <ThemeToggle />
+        </div>
         <div className="auth-brand">
           <CheckSquare aria-hidden="true" />
           <div>

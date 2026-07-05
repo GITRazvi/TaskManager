@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TaskManager</title>
+    <script>
+      (() => {
+        let savedTheme = null;
+        try {
+          const stored = localStorage.getItem("taskmanager-theme");
+          savedTheme = stored ? JSON.parse(stored)?.state?.theme : null;
+        } catch {
+          savedTheme = null;
+        }
+        savedTheme = savedTheme === "dark" || savedTheme === "light" ? savedTheme : null;
+        const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+        document.documentElement.dataset.theme = savedTheme || (prefersDark ? "dark" : "light");
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

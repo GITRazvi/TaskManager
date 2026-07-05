@@ -10,13 +10,17 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -73,6 +77,15 @@ public class Sprint {
     @OneToMany(mappedBy = "sprint")
     @Builder.Default
     private List<Task> tasks = new ArrayList<>();
+
+    @ManyToMany
+    @JoinTable(
+            name = "sprint_members",
+            joinColumns = @JoinColumn(name = "sprint_id"),
+            inverseJoinColumns = @JoinColumn(name = "user_id")
+    )
+    @Builder.Default
+    private Set<User> participants = new LinkedHashSet<>();
 
     /**
      * Returns the generated sprint identifier.
@@ -212,5 +225,19 @@ public class Sprint {
      */
     public void setTasks(List<Task> tasks) {
         this.tasks = tasks;
+    }
+
+    /**
+     * Returns the users allowed to access this sprint and its tasks.
+     */
+    public Set<User> getParticipants() {
+        return participants;
+    }
+
+    /**
+     * Sets the users allowed to access this sprint and its tasks.
+     */
+    public void setParticipants(Set<User> participants) {
+        this.participants = participants;
     }
 }

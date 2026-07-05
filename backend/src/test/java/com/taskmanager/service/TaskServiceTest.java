@@ -54,10 +54,12 @@ class TaskServiceTest {
      * Verifies task creation defaults priority/status and resolves sprint and assignee using request ids.
      */
     @Test
-    void createTaskDefaultsPriorityAndStatusAndAssignsCurrentUser() {
+    void createTaskDefaultsPriorityAndStatusAndAssignsAnotherActiveUser() {
         UUID userId = UUID.randomUUID();
+        UUID assigneeId = UUID.randomUUID();
         UUID sprintId = UUID.randomUUID();
         User user = activeUser(userId);
+        User assignee = activeUser(assigneeId, "mira", "mira@example.com");
         Sprint sprint = sprint(sprintId, user);
         LocalDate dueDate = LocalDate.now().plusDays(3);
         TaskCreateRequest request = new TaskCreateRequest(
@@ -66,10 +68,11 @@ class TaskServiceTest {
                 null,
                 dueDate,
                 sprintId,
-                userId
+                assigneeId
         );
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(sprintRepository.findByIdAndUserId(sprintId, userId)).thenReturn(Optional.of(sprint));
+        when(userRepository.findById(assigneeId)).thenReturn(Optional.of(assignee));
+        when(sprintRepository.findAccessibleByIdAndUserId(sprintId, userId)).thenReturn(Optional.of(sprint));
         when(taskRepository.save(any(Task.class))).thenAnswer(invocation -> {
             Task task = invocation.getArgument(0);
             task.setId(UUID.randomUUID());
@@ -82,7 +85,7 @@ class TaskServiceTest {
         assertThat(response.status()).isEqualTo(TaskStatus.TODO);
         assertThat(response.priority()).isEqualTo(TaskPriority.MEDIUM);
         assertThat(response.sprintId()).isEqualTo(sprintId);
-        assertThat(response.assignedToId()).isEqualTo(userId);
+        assertThat(response.assignedToId()).isEqualTo(assigneeId);
         assertThat(response.dueDate()).isEqualTo(dueDate);
 
         ArgumentCaptor<Task> taskCaptor = ArgumentCaptor.forClass(Task.class);
@@ -90,7 +93,7 @@ class TaskServiceTest {
         Task savedTask = taskCaptor.getValue();
         assertThat(savedTask.getUser()).isSameAs(user);
         assertThat(savedTask.getSprint()).isSameAs(sprint);
-        assertThat(savedTask.getAssignedTo()).isSameAs(user);
+        assertThat(savedTask.getAssignedTo()).isSameAs(assignee);
     }
 
     /**
@@ -156,10 +159,17 @@ class TaskServiceTest {
      * Builds an active User fixture with the supplied {@code userId}.
      */
     private static User activeUser(UUID userId) {
+        return activeUser(userId, "alex", "alex@example.com");
+    }
+
+    /**
+     * Builds an active User fixture with identity fields.
+     */
+    private static User activeUser(UUID userId, String username, String email) {
         User user = new User();
         user.setId(userId);
-        user.setUsername("alex");
-        user.setEmail("alex@example.com");
+        user.setUsername(username);
+        user.setEmail(email);
         user.setActive(true);
         return user;
     }

@@ -4,6 +4,7 @@ package com.taskmanager.dto;
 import com.taskmanager.entity.enums.SprintStatus;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
+import java.util.List;
 
 public record SprintUpdateRequest(
         @Size(max = 255)
@@ -11,6 +12,7 @@ public record SprintUpdateRequest(
         String description,
         LocalDate startDate,
         LocalDate endDate,
-        SprintStatus status
+        SprintStatus status,
+        List<@Size(max = 255) String> participantIdentifiers
 ) {
 }

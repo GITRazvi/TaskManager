@@ -2,6 +2,7 @@ import { CheckSquare, LayoutDashboard, LogOut, Rows3, UserCircle } from "lucide-
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useLogout } from "../../hooks/useAuth";
 import { useAuthStore } from "../../store/authStore";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function AppLayout() {
   const navigate = useNavigate();
@@ -40,6 +41,7 @@ export function AppLayout() {
             <UserCircle aria-hidden="true" />
             <span>{user?.fullName || user?.username || "Account"}</span>
           </div>
+          <ThemeToggle />
           <button className="icon-text-button" type="button" onClick={handleLogout}>
             <LogOut aria-hidden="true" />
             Logout

@@ -15,6 +15,7 @@ import com.taskmanager.exception.ResourceNotFoundException;
 import com.taskmanager.repository.SprintRepository;
 import com.taskmanager.repository.TaskRepository;
 import com.taskmanager.repository.UserRepository;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -64,7 +65,7 @@ public class TaskService {
         task.setStatus(TaskStatus.TODO);
         task.setDueDate(request.dueDate());
         task.setSprint(resolveSprint(request.sprintId(), userId));
-        task.setAssignedTo(resolveAssignedTo(request.assignedToId(), userId));
+        task.setAssignedTo(resolveAssignedTo(request.assignedToId()));
 
         return TaskResponse.from(taskRepository.save(task));
     }
@@ -99,7 +100,7 @@ public class TaskService {
      */
     @Transactional(readOnly = true)
     public TaskResponse getTaskById(UUID taskId, UUID userId) {
-        return TaskResponse.from(getOwnedTask(taskId, userId));
+        return TaskResponse.from(getVisibleTask(taskId, userId));
     }
 
     /**
@@ -132,7 +133,7 @@ public class TaskService {
             task.setSprint(resolveSprint(request.sprintId(), userId));
         }
         if (request.assignedToId() != null) {
-            task.setAssignedTo(resolveAssignedTo(request.assignedToId(), userId));
+            task.setAssignedTo(resolveAssignedTo(request.assignedToId()));
         }
 
         return TaskResponse.from(task);
@@ -165,6 +166,14 @@ public class TaskService {
     }
 
     /**
+     * Finds a task visible to {@code userId}, including tasks in sprints the user can access.
+     */
+    private Task getVisibleTask(UUID taskId, UUID userId) {
+        return taskRepository.findVisibleByIdAndUserId(taskId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Task not found"));
+    }
+
+    /**
      * Loads an active user by {@code userId}; missing or inactive users cannot own new tasks.
      */
     private User getUser(UUID userId) {
@@ -174,25 +183,22 @@ public class TaskService {
     }
 
     /**
-     * Resolves an optional {@code sprintId} to a sprint owned by {@code userId}, returning null when unassigned.
+     * Resolves an optional {@code sprintId} to a sprint visible to {@code userId}, returning null when unassigned.
      */
     private Sprint resolveSprint(UUID sprintId, UUID userId) {
         if (sprintId == null) {
             return null;
         }
-        return sprintRepository.findByIdAndUserId(sprintId, userId)
+        return sprintRepository.findAccessibleByIdAndUserId(sprintId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Sprint not found"));
     }
 
     /**
-     * Resolves an optional assignee; {@code assignedToId} must match {@code userId} because self-assignment only is allowed.
+     * Resolves an optional assignee to any active user.
      */
-    private User resolveAssignedTo(UUID assignedToId, UUID userId) {
+    private User resolveAssignedTo(UUID assignedToId) {
         if (assignedToId == null) {
             return null;
-        }
-        if (!assignedToId.equals(userId)) {
-            throw new AppException(HttpStatus.BAD_REQUEST, "INVALID_ASSIGNEE", "Tasks can only be assigned to the current user");
         }
         return getUser(assignedToId);
     }
@@ -217,8 +223,15 @@ public class TaskService {
             LocalDate endDate
     ) {
         return (root, query, criteriaBuilder) -> {
+            query.distinct(true);
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(criteriaBuilder.equal(root.get("user").get("id"), userId));
+            var sprintJoin = root.join("sprint", JoinType.LEFT);
+            var participantJoin = sprintJoin.join("participants", JoinType.LEFT);
+            predicates.add(criteriaBuilder.or(
+                    criteriaBuilder.equal(root.get("user").get("id"), userId),
+                    criteriaBuilder.equal(sprintJoin.get("user").get("id"), userId),
+                    criteriaBuilder.equal(participantJoin.get("id"), userId)
+            ));
 
             if (status != null) {
                 predicates.add(criteriaBuilder.equal(root.get("status"), status));

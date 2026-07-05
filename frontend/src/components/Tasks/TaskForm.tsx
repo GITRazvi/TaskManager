@@ -5,24 +5,27 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { getApiErrorMessage } from "../../api/client";
 import { useCreateTask, useUpdateTask } from "../../hooks/useTasks";
-import type { Sprint, Task, TaskPriority } from "../../types";
+import type { Sprint, Task, TaskPriority, User } from "../../types";
 
 const schema = z.object({
   title: z.string().min(1, "Title is required").max(255),
   description: z.string().optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).optional(),
   dueDate: z.string().optional(),
-  sprintId: z.string().optional()
+  sprintId: z.string().optional(),
+  assignedToId: z.string().optional()
 });
 
 type FormValues = z.infer<typeof schema>;
 
 export function TaskForm({
   sprints,
+  users,
   editingTask,
   onDone
 }: {
   sprints: Sprint[];
+  users: User[];
   editingTask?: Task | null;
   onDone?: () => void;
 }) {
@@ -35,7 +38,8 @@ export function TaskForm({
       description: "",
       priority: "MEDIUM",
       dueDate: "",
-      sprintId: ""
+      sprintId: "",
+      assignedToId: ""
     }
   });
 
@@ -45,7 +49,8 @@ export function TaskForm({
       description: editingTask?.description ?? "",
       priority: (editingTask?.priority ?? "MEDIUM") as TaskPriority,
       dueDate: editingTask?.dueDate ?? "",
-      sprintId: editingTask?.sprintId ?? ""
+      sprintId: editingTask?.sprintId ?? "",
+      assignedToId: editingTask?.assignedToId ?? ""
     });
   }, [editingTask, form]);
 
@@ -54,7 +59,8 @@ export function TaskForm({
       ...values,
       description: values.description || undefined,
       dueDate: values.dueDate || undefined,
-      sprintId: values.sprintId || undefined
+      sprintId: values.sprintId || undefined,
+      assignedToId: values.assignedToId || undefined
     };
 
     if (editingTask) {
@@ -72,7 +78,14 @@ export function TaskForm({
 
     createTask.mutate(payload, {
       onSuccess: () => {
-        form.reset({ title: "", description: "", priority: "MEDIUM", dueDate: "", sprintId: "" });
+        form.reset({
+          title: "",
+          description: "",
+          priority: "MEDIUM",
+          dueDate: "",
+          sprintId: "",
+          assignedToId: ""
+        });
         onDone?.();
       }
     });
@@ -118,6 +131,17 @@ export function TaskForm({
           {sprints.map((sprint) => (
             <option key={sprint.id} value={sprint.id}>
               {sprint.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Assignee
+        <select {...form.register("assignedToId")}>
+          <option value="">Unassigned</option>
+          {users.map((user) => (
+            <option key={user.id} value={user.id}>
+              {user.fullName || user.username}
             </option>
           ))}
         </select>

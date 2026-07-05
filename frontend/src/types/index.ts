@@ -92,6 +92,7 @@ export interface Sprint {
   endDate: string;
   status: SprintStatus;
   taskCount: number;
+  participants: User[];
   createdAt: string;
   updatedAt: string;
 }
@@ -101,6 +102,7 @@ export interface SprintCreateRequest {
   description?: string;
   startDate: string;
   endDate: string;
+  participantIdentifiers?: string[];
 }
 
 export type SprintUpdateRequest = Partial<SprintCreateRequest & { status: SprintStatus }>;

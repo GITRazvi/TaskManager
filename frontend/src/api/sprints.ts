@@ -24,6 +24,10 @@ export function updateSprint(id: string, payload: SprintUpdateRequest) {
   return unwrapResponse<Sprint>(apiClient.put(`/sprints/${id}`, payload));
 }
 
+export function deleteSprint(id: string) {
+  return unwrapResponse<void>(apiClient.delete(`/sprints/${id}`));
+}
+
 export function getSprintBoard(id: string) {
   return unwrapResponse<SprintBoardResponse>(apiClient.get(`/sprints/${id}/tasks`));
 }
