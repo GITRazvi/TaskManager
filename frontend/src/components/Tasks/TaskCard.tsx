@@ -1,5 +1,5 @@
 import { CalendarDays, Check, Circle, Pencil, Trash2, UserRound } from "lucide-react";
-import type { DragEventHandler } from "react";
+import type { DragEventHandler, KeyboardEventHandler, MouseEventHandler } from "react";
 import type { Task, TaskStatus, User } from "../../types";
 
 const statusOptions: TaskStatus[] = ["TODO", "IN_PROGRESS", "DONE"];
@@ -18,6 +18,7 @@ export function TaskCard({
   onDragStart,
   onDragEnd,
   onStatusChange,
+  onOpen,
   onEdit,
   onDelete
 }: {
@@ -28,17 +29,40 @@ export function TaskCard({
   onDragStart?: DragEventHandler<HTMLElement>;
   onDragEnd?: DragEventHandler<HTMLElement>;
   onStatusChange: (status: TaskStatus) => void;
+  onOpen?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
 }) {
   const assigneeName = assignee?.fullName || assignee?.username;
+  const interactiveProps = onOpen
+    ? ({
+        role: "button",
+        tabIndex: 0,
+        onClick: onOpen,
+        onKeyDown: ((event) => {
+          if (event.key !== "Enter" && event.key !== " ") {
+            return;
+          }
+
+          event.preventDefault();
+          onOpen();
+        }) as KeyboardEventHandler<HTMLElement>
+      } satisfies {
+        role: "button";
+        tabIndex: number;
+        onClick: () => void;
+        onKeyDown: KeyboardEventHandler<HTMLElement>;
+      })
+    : {};
+  const stopOpen: MouseEventHandler = (event) => event.stopPropagation();
 
   return (
     <article
-      className={`task-card${isDragging ? " task-card-dragging" : ""}`}
+      className={`task-card${isDragging ? " task-card-dragging" : ""}${onOpen ? " task-card-clickable" : ""}`}
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      {...interactiveProps}
     >
       <div className="task-card-header">
         <div>
@@ -67,7 +91,7 @@ export function TaskCard({
           </span>
         )}
       </div>
-      <div className="task-actions">
+      <div className="task-actions" onClick={stopOpen}>
         <select
           aria-label={`Status for ${task.title}`}
           value={task.status}

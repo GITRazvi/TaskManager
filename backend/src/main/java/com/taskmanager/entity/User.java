@@ -1,4 +1,4 @@
-// File responsibility: Maps the user domain entity, authentication fields, profile fields, tasks, and sprints to the database.
+// File responsibility: Maps the user domain entity, authentication fields, profile fields, tasks, projects, and sprints to the database.
 package com.taskmanager.entity;
 
 import jakarta.persistence.Column;
@@ -68,6 +68,10 @@ public class User {
     @OneToMany(mappedBy = "user")
     @Builder.Default
     private List<Sprint> sprints = new ArrayList<>();
+
+    @OneToMany(mappedBy = "user")
+    @Builder.Default
+    private List<Project> projects = new ArrayList<>();
 
     /**
      * Returns the generated user identifier.
@@ -221,5 +225,19 @@ public class User {
      */
     public void setSprints(List<Sprint> sprints) {
         this.sprints = sprints;
+    }
+
+    /**
+     * Returns the projects owned by this user.
+     */
+    public List<Project> getProjects() {
+        return projects;
+    }
+
+    /**
+     * Sets the projects owned by this user.
+     */
+    public void setProjects(List<Project> projects) {
+        this.projects = projects;
     }
 }

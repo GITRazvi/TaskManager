@@ -46,11 +46,32 @@ export interface Task {
   userId: string;
   sprintId?: string | null;
   assignedToId?: string | null;
+  reviewerId?: string | null;
+  projectId?: string | null;
+  sprintName?: string | null;
+  projectName?: string | null;
   title: string;
   description?: string | null;
+  comments: TaskComment[];
   status: TaskStatus;
   priority?: TaskPriority | null;
+  storyPoints?: number | null;
+  estimatedHours?: number | null;
   dueDate?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskComment {
+  id: string;
+  taskId: string;
+  authorId?: string | null;
+  authorName?: string | null;
+  content: string;
+  attachmentFileName?: string | null;
+  attachmentContentType?: string | null;
+  attachmentSize?: number | null;
+  attachmentUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -66,6 +87,7 @@ export interface TaskListResponse {
 export interface TaskFilters {
   status?: TaskStatus;
   priority?: TaskPriority;
+  assignedToId?: string;
   startDate?: string;
   endDate?: string;
   page?: number;
@@ -79,13 +101,42 @@ export interface TaskCreateRequest {
   dueDate?: string;
   sprintId?: string;
   assignedToId?: string;
+  reviewerId?: string;
+  storyPoints?: number;
+  estimatedHours?: number;
+  comments?: string;
 }
 
 export type TaskUpdateRequest = Partial<TaskCreateRequest & { status: TaskStatus }>;
 
+export interface TaskCommentCreateRequest {
+  content?: string;
+  attachment?: File;
+}
+
+export interface Project {
+  id: string;
+  userId: string;
+  name: string;
+  description?: string | null;
+  sprintCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectCreateRequest {
+  name: string;
+  description?: string;
+}
+
+export type ProjectUpdateRequest = Partial<ProjectCreateRequest>;
+
 export interface Sprint {
   id: string;
   userId: string;
+  projectId: string;
+  projectName: string;
+  creatorName: string;
   name: string;
   description?: string | null;
   startDate: string;
@@ -100,6 +151,7 @@ export interface Sprint {
 export interface SprintCreateRequest {
   name: string;
   description?: string;
+  projectId: string;
   startDate: string;
   endDate: string;
   participantIdentifiers?: string[];

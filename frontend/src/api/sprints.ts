@@ -1,4 +1,5 @@
 import { apiClient, unwrapResponse } from "./client";
+import { normalizeSprintBoardResponse } from "./normalizers";
 import type {
   Sprint,
   SprintBoardResponse,
@@ -29,7 +30,7 @@ export function deleteSprint(id: string) {
 }
 
 export function getSprintBoard(id: string) {
-  return unwrapResponse<SprintBoardResponse>(apiClient.get(`/sprints/${id}/tasks`));
+  return unwrapResponse<SprintBoardResponse>(apiClient.get(`/sprints/${id}/tasks`)).then(normalizeSprintBoardResponse);
 }
 
 export function getSprintStats(id: string) {

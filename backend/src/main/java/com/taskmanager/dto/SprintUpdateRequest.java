@@ -5,11 +5,13 @@ import com.taskmanager.entity.enums.SprintStatus;
 import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.UUID;
 
 public record SprintUpdateRequest(
         @Size(max = 255)
         String name,
         String description,
+        UUID projectId,
         LocalDate startDate,
         LocalDate endDate,
         SprintStatus status,

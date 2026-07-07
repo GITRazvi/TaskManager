@@ -17,8 +17,10 @@ import com.taskmanager.entity.enums.TaskPriority;
 import com.taskmanager.entity.enums.TaskStatus;
 import com.taskmanager.exception.AppException;
 import com.taskmanager.repository.SprintRepository;
+import com.taskmanager.repository.TaskCommentRepository;
 import com.taskmanager.repository.TaskRepository;
 import com.taskmanager.repository.UserRepository;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
@@ -28,6 +30,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
 
 @ExtendWith(MockitoExtension.class)
 class TaskServiceTest {
@@ -40,6 +43,9 @@ class TaskServiceTest {
     @Mock
     private SprintRepository sprintRepository;
 
+    @Mock
+    private TaskCommentRepository taskCommentRepository;
+
     private TaskService taskService;
 
     /**
@@ -47,7 +53,7 @@ class TaskServiceTest {
      */
     @BeforeEach
     void setUp() {
-        taskService = new TaskService(taskRepository, userRepository, sprintRepository);
+        taskService = new TaskService(taskRepository, userRepository, sprintRepository, taskCommentRepository);
     }
 
     /**
@@ -68,7 +74,11 @@ class TaskServiceTest {
                 null,
                 dueDate,
                 sprintId,
-                assigneeId
+                assigneeId,
+                null,
+                3,
+                new BigDecimal("6.5"),
+                "Ready for review"
         );
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.findById(assigneeId)).thenReturn(Optional.of(assignee));
@@ -86,6 +96,9 @@ class TaskServiceTest {
         assertThat(response.priority()).isEqualTo(TaskPriority.MEDIUM);
         assertThat(response.sprintId()).isEqualTo(sprintId);
         assertThat(response.assignedToId()).isEqualTo(assigneeId);
+        assertThat(response.storyPoints()).isEqualTo(3);
+        assertThat(response.estimatedHours()).isEqualByComparingTo("6.5");
+        assertThat(response.comments()).extracting("content").containsExactly("Ready for review");
         assertThat(response.dueDate()).isEqualTo(dueDate);
 
         ArgumentCaptor<Task> taskCaptor = ArgumentCaptor.forClass(Task.class);
@@ -94,6 +107,85 @@ class TaskServiceTest {
         assertThat(savedTask.getUser()).isSameAs(user);
         assertThat(savedTask.getSprint()).isSameAs(sprint);
         assertThat(savedTask.getAssignedTo()).isSameAs(assignee);
+        assertThat(savedTask.getStoryPoints()).isEqualTo(3);
+        assertThat(savedTask.getEstimatedHours()).isEqualByComparingTo("6.5");
+        assertThat(savedTask.getComments()).extracting("content").containsExactly("Ready for review");
+    }
+
+    /**
+     * Verifies a sprint task can use another sprint member as reviewer.
+     */
+    @Test
+    void createTaskAllowsReviewerFromSameSprint() {
+        UUID userId = UUID.randomUUID();
+        UUID reviewerId = UUID.randomUUID();
+        UUID sprintId = UUID.randomUUID();
+        User owner = activeUser(userId);
+        User reviewer = activeUser(reviewerId, "sam", "sam@example.com");
+        Sprint sprint = sprint(sprintId, owner);
+        sprint.getParticipants().add(reviewer);
+        TaskCreateRequest request = new TaskCreateRequest(
+                "Reviewable task",
+                null,
+                TaskPriority.HIGH,
+                null,
+                sprintId,
+                null,
+                reviewerId,
+                5,
+                new BigDecimal("4"),
+                null
+        );
+        when(userRepository.findById(userId)).thenReturn(Optional.of(owner));
+        when(userRepository.findById(reviewerId)).thenReturn(Optional.of(reviewer));
+        when(sprintRepository.findAccessibleByIdAndUserId(sprintId, userId)).thenReturn(Optional.of(sprint));
+        when(taskRepository.save(any(Task.class))).thenAnswer(invocation -> {
+            Task task = invocation.getArgument(0);
+            task.setId(UUID.randomUUID());
+            return task;
+        });
+
+        var response = taskService.createTask(request, userId);
+
+        assertThat(response.reviewerId()).isEqualTo(reviewerId);
+        assertThat(response.storyPoints()).isEqualTo(5);
+        assertThat(response.estimatedHours()).isEqualByComparingTo("4");
+    }
+
+    /**
+     * Verifies sprint task reviewers must belong to the same sprint.
+     */
+    @Test
+    void createTaskRejectsReviewerOutsideSprint() {
+        UUID userId = UUID.randomUUID();
+        UUID reviewerId = UUID.randomUUID();
+        UUID sprintId = UUID.randomUUID();
+        User owner = activeUser(userId);
+        User reviewer = activeUser(reviewerId, "sam", "sam@example.com");
+        Sprint sprint = sprint(sprintId, owner);
+        TaskCreateRequest request = new TaskCreateRequest(
+                "Reviewable task",
+                null,
+                TaskPriority.HIGH,
+                null,
+                sprintId,
+                null,
+                reviewerId,
+                null,
+                null,
+                null
+        );
+        when(userRepository.findById(userId)).thenReturn(Optional.of(owner));
+        when(userRepository.findById(reviewerId)).thenReturn(Optional.of(reviewer));
+        when(sprintRepository.findAccessibleByIdAndUserId(sprintId, userId)).thenReturn(Optional.of(sprint));
+
+        assertThatThrownBy(() -> taskService.createTask(request, userId))
+                .isInstanceOf(AppException.class)
+                .hasMessage("Task reviewer must belong to the same sprint")
+                .extracting("errorCode")
+                .isEqualTo("INVALID_TASK_REVIEWER");
+
+        verify(taskRepository, never()).save(any(Task.class));
     }
 
     /**
@@ -107,6 +199,10 @@ class TaskServiceTest {
                 null,
                 TaskPriority.HIGH,
                 LocalDate.now().minusDays(1),
+                null,
+                null,
+                null,
+                null,
                 null,
                 null
         );
@@ -128,8 +224,8 @@ class TaskServiceTest {
     void updateTaskRejectsBlankTitle() {
         UUID userId = UUID.randomUUID();
         UUID taskId = UUID.randomUUID();
-        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(task(taskId, activeUser(userId))));
-        TaskUpdateRequest request = new TaskUpdateRequest("   ", null, null, null, null, null, null);
+        when(taskRepository.findVisibleByIdAndUserId(taskId, userId)).thenReturn(Optional.of(task(taskId, activeUser(userId))));
+        TaskUpdateRequest request = new TaskUpdateRequest("   ", null, null, null, null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> taskService.updateTask(taskId, userId, request))
                 .isInstanceOf(AppException.class)
@@ -139,20 +235,114 @@ class TaskServiceTest {
     }
 
     /**
-     * Verifies updating status mutates the existing owned task and returns the new status in the response.
+     * Verifies visible sprint tasks can save estimates and comments even when the current user is not the task owner.
      */
     @Test
-    void updateStatusChangesExistingTask() {
+    void updateTaskSavesVisibleSprintTaskDetails() {
+        UUID userId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        User owner = activeUser(ownerId, "owner", "owner@example.com");
+        User participant = activeUser(userId, "participant", "participant@example.com");
+        Sprint sprint = sprint(UUID.randomUUID(), owner);
+        sprint.getParticipants().add(participant);
+        Task task = task(taskId, owner);
+        task.setSprint(sprint);
+        TaskUpdateRequest request = new TaskUpdateRequest(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                8,
+                new BigDecimal("12.25"),
+                "Implementation notes"
+        );
+        when(taskRepository.findVisibleByIdAndUserId(taskId, userId)).thenReturn(Optional.of(task));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(participant));
+
+        var response = taskService.updateTask(taskId, userId, request);
+
+        assertThat(task.getStoryPoints()).isEqualTo(8);
+        assertThat(task.getEstimatedHours()).isEqualByComparingTo("12.25");
+        assertThat(task.getComments()).extracting("content").containsExactly("Implementation notes");
+        assertThat(response.storyPoints()).isEqualTo(8);
+        assertThat(response.estimatedHours()).isEqualByComparingTo("12.25");
+        assertThat(response.comments()).extracting("content").containsExactly("Implementation notes");
+    }
+
+    /**
+     * Verifies comments can persist an attached file and expose its metadata in the response.
+     */
+    @Test
+    void addCommentStoresAttachmentMetadata() {
+        UUID userId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        User user = activeUser(userId);
+        Task task = task(taskId, user);
+        MockMultipartFile attachment = new MockMultipartFile(
+                "attachment",
+                "bug.png",
+                "image/png",
+                new byte[] { 1, 2, 3 }
+        );
+        when(taskRepository.findVisibleByIdAndUserId(taskId, userId)).thenReturn(Optional.of(task));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(taskCommentRepository.save(any())).thenAnswer(invocation -> {
+            var comment = invocation.getArgument(0, com.taskmanager.entity.TaskComment.class);
+            comment.setId(UUID.randomUUID());
+            return comment;
+        });
+
+        var response = taskService.addComment(taskId, userId, "Screenshot attached", attachment);
+
+        assertThat(response.content()).isEqualTo("Screenshot attached");
+        assertThat(response.attachmentFileName()).isEqualTo("bug.png");
+        assertThat(response.attachmentContentType()).isEqualTo("image/png");
+        assertThat(response.attachmentSize()).isEqualTo(3);
+        assertThat(response.attachmentUrl()).contains("/tasks/" + taskId + "/comments/");
+
+        ArgumentCaptor<com.taskmanager.entity.TaskComment> commentCaptor =
+                ArgumentCaptor.forClass(com.taskmanager.entity.TaskComment.class);
+        verify(taskCommentRepository).save(commentCaptor.capture());
+        assertThat(commentCaptor.getValue().getAttachmentData()).containsExactly(1, 2, 3);
+    }
+
+    /**
+     * Verifies updating status mutates a visible task and returns the new status in the response.
+     */
+    @Test
+    void updateStatusChangesVisibleTask() {
         UUID userId = UUID.randomUUID();
         UUID taskId = UUID.randomUUID();
         Task task = task(taskId, activeUser(userId));
         task.setStatus(TaskStatus.TODO);
-        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(task));
+        when(taskRepository.findVisibleByIdAndUserId(taskId, userId)).thenReturn(Optional.of(task));
 
         var response = taskService.updateStatus(taskId, userId, TaskStatus.DONE);
 
         assertThat(task.getStatus()).isEqualTo(TaskStatus.DONE);
         assertThat(response.status()).isEqualTo(TaskStatus.DONE);
+    }
+
+    /**
+     * Verifies completed tasks can move back to todo when work needs to be reopened.
+     */
+    @Test
+    void updateStatusAllowsMovingDoneTaskBackToTodo() {
+        UUID userId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        Task task = task(taskId, activeUser(userId));
+        task.setStatus(TaskStatus.DONE);
+        when(taskRepository.findVisibleByIdAndUserId(taskId, userId)).thenReturn(Optional.of(task));
+
+        var response = taskService.updateStatus(taskId, userId, TaskStatus.TODO);
+
+        assertThat(task.getStatus()).isEqualTo(TaskStatus.TODO);
+        assertThat(response.status()).isEqualTo(TaskStatus.TODO);
     }
 
     /**

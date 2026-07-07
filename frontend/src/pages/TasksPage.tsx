@@ -1,14 +1,12 @@
-import { useState } from "react";
-import { TaskForm } from "../components/Tasks/TaskForm";
 import { TaskList } from "../components/Tasks/TaskList";
 import { useSprints } from "../hooks/useSprints";
 import { useUsers } from "../hooks/useUsers";
-import type { Task } from "../types";
+import { useAuthStore } from "../store/authStore";
 
 export function TasksPage() {
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const sprints = useSprints();
   const users = useUsers();
+  const currentUserId = useAuthStore((state) => state.user?.id);
 
   return (
     <div className="page-stack">
@@ -18,22 +16,7 @@ export function TasksPage() {
           <h1>Tasks</h1>
         </div>
       </header>
-      <div className="split-layout">
-        <TaskList users={users.data ?? []} onEdit={setEditingTask} />
-        <aside className="side-panel">
-          <TaskForm
-            sprints={sprints.data ?? []}
-            users={users.data ?? []}
-            editingTask={editingTask}
-            onDone={() => setEditingTask(null)}
-          />
-          {editingTask && (
-            <button className="secondary-button" type="button" onClick={() => setEditingTask(null)}>
-              Cancel edit
-            </button>
-          )}
-        </aside>
-      </div>
+      <TaskList sprints={sprints.data ?? []} users={users.data ?? []} assignedToId={currentUserId} />
     </div>
   );
 }

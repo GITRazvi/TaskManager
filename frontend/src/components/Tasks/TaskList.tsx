@@ -1,17 +1,27 @@
 import { useMemo, useState } from "react";
 import { getApiErrorMessage } from "../../api/client";
-import { useDeleteTask, useTasks, useUpdateTaskStatus } from "../../hooks/useTasks";
-import type { Task, TaskFilters as Filters, User } from "../../types";
+import { useTasks, useUpdateTaskStatus } from "../../hooks/useTasks";
+import type { Sprint, Task, TaskFilters as Filters, User } from "../../types";
 import { Loading } from "../Common/Loading";
 import { TaskCard } from "./TaskCard";
+import { TaskDetails } from "./TaskDetails";
 import { TaskFilters } from "./TaskFilters";
 
-export function TaskList({ users, onEdit }: { users: User[]; onEdit: (task: Task) => void }) {
+export function TaskList({ sprints, users, assignedToId }: { sprints: Sprint[]; users: User[]; assignedToId?: string }) {
   const [filters, setFilters] = useState<Filters>({ page: 0, size: 20 });
-  const tasks = useTasks(filters);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const tasks = useTasks({ ...filters, assignedToId }, { enabled: Boolean(assignedToId) });
   const updateStatus = useUpdateTaskStatus();
-  const deleteTask = useDeleteTask();
-  const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
+  const usersById = useMemo(() => {
+    const nextUsersById = new Map(users.map((user) => [user.id, user]));
+    for (const sprint of sprints) {
+      for (const participant of sprint.participants ?? []) {
+        nextUsersById.set(participant.id, participant);
+      }
+    }
+    return nextUsersById;
+  }, [sprints, users]);
+  const sprintsById = useMemo(() => new Map(sprints.map((sprint) => [sprint.id, sprint])), [sprints]);
 
   return (
     <section className="content-section">
@@ -22,7 +32,7 @@ export function TaskList({ users, onEdit }: { users: User[]; onEdit: (task: Task
         </div>
       </div>
       <TaskFilters filters={filters} onChange={setFilters} />
-      {tasks.isLoading && <Loading label="Loading tasks" />}
+      {(!assignedToId || tasks.isLoading) && <Loading label="Loading tasks" />}
       {tasks.isError && <p className="form-error">{getApiErrorMessage(tasks.error)}</p>}
       {tasks.data?.tasks.length === 0 && <p className="empty-state">No tasks match the current view.</p>}
       <div className="task-list">
@@ -31,8 +41,7 @@ export function TaskList({ users, onEdit }: { users: User[]; onEdit: (task: Task
             key={task.id}
             task={task}
             assignee={task.assignedToId ? usersById.get(task.assignedToId) : undefined}
-            onEdit={() => onEdit(task)}
-            onDelete={() => deleteTask.mutate(task.id)}
+            onOpen={() => setSelectedTask(task)}
             onStatusChange={(status) => updateStatus.mutate({ id: task.id, status })}
           />
         ))}
@@ -57,6 +66,18 @@ export function TaskList({ users, onEdit }: { users: User[]; onEdit: (task: Task
             Next
           </button>
         </div>
+      )}
+      {selectedTask && (
+        <TaskDetails
+          task={selectedTask}
+          assignee={selectedTask.assignedToId ? usersById.get(selectedTask.assignedToId) : undefined}
+          reviewer={selectedTask.reviewerId ? usersById.get(selectedTask.reviewerId) : undefined}
+          sprint={selectedTask.sprintId ? sprintsById.get(selectedTask.sprintId) : undefined}
+          sprints={sprints}
+          users={users}
+          onClose={() => setSelectedTask(null)}
+          onTaskUpdated={setSelectedTask}
+        />
       )}
     </section>
   );

@@ -5,11 +5,12 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { getApiErrorMessage } from "../../api/client";
 import { useCreateSprint, useUpdateSprint } from "../../hooks/useSprints";
-import type { Sprint, SprintStatus, User } from "../../types";
+import type { Project, Sprint, SprintStatus, User } from "../../types";
 
 const schema = z.object({
   name: z.string().min(1, "Name is required").max(255),
   description: z.string().optional(),
+  projectId: z.string().min(1, "Project is required"),
   startDate: z.string().min(1, "Start date is required"),
   endDate: z.string().min(1, "End date is required"),
   status: z.enum(["PLANNING", "ACTIVE", "COMPLETED", "ARCHIVED"]).optional()
@@ -18,12 +19,16 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export function SprintForm({
+  projects,
   users,
   editingSprint,
+  hideHeading = false,
   onDone
 }: {
+  projects: Project[];
   users: User[];
   editingSprint?: Sprint | null;
+  hideHeading?: boolean;
   onDone?: (id: string) => void;
 }) {
   const createSprint = useCreateSprint();
@@ -31,19 +36,27 @@ export function SprintForm({
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", description: "", startDate: "", endDate: "", status: "PLANNING" }
+    defaultValues: {
+      name: "",
+      description: "",
+      projectId: projects[0]?.id ?? "",
+      startDate: "",
+      endDate: "",
+      status: "PLANNING"
+    }
   });
 
   useEffect(() => {
     form.reset({
       name: editingSprint?.name ?? "",
       description: editingSprint?.description ?? "",
+      projectId: editingSprint?.projectId ?? projects[0]?.id ?? "",
       startDate: editingSprint?.startDate ?? "",
       endDate: editingSprint?.endDate ?? "",
       status: (editingSprint?.status ?? "PLANNING") as SprintStatus
     });
     setSelectedUserIds(editingSprint?.participants.map((user) => user.id) ?? []);
-  }, [editingSprint, form]);
+  }, [editingSprint, form, projects]);
 
   const toggleSelectedUser = (userId: string) => {
     if (editingSprint?.userId === userId) {
@@ -62,6 +75,7 @@ export function SprintForm({
     const payload = {
       name: values.name,
       description: values.description || undefined,
+      projectId: values.projectId,
       startDate: values.startDate,
       endDate: values.endDate,
       participantIdentifiers
@@ -85,7 +99,14 @@ export function SprintForm({
 
     createSprint.mutate(payload, {
         onSuccess: (sprint) => {
-          form.reset({ name: "", description: "", startDate: "", endDate: "", status: "PLANNING" });
+          form.reset({
+            name: "",
+            description: "",
+            projectId: projects[0]?.id ?? "",
+            startDate: "",
+            endDate: "",
+            status: "PLANNING"
+          });
           setSelectedUserIds([]);
           onDone?.(sprint.id);
         }
@@ -99,9 +120,11 @@ export function SprintForm({
 
   return (
     <form className="panel-form" onSubmit={onSubmit}>
-      <div className="section-heading">
-        <h2>{editingSprint ? "Edit Sprint" : "New Sprint"}</h2>
-      </div>
+      {!hideHeading && (
+        <div className="section-heading">
+          <h2>{editingSprint ? "Edit Sprint" : "New Sprint"}</h2>
+        </div>
+      )}
       <label>
         Name
         <input {...form.register("name")} />
@@ -110,6 +133,21 @@ export function SprintForm({
       <label>
         Description
         <textarea rows={3} {...form.register("description")} />
+      </label>
+      <label>
+        Project
+        <select {...form.register("projectId")}>
+          <option value="" disabled>
+            Select project
+          </option>
+          {projects.map((project) => (
+            <option key={project.id} value={project.id}>
+              {project.name}
+            </option>
+          ))}
+        </select>
+        {form.formState.errors.projectId && <small>{form.formState.errors.projectId.message}</small>}
+        {projects.length === 0 && <small>Create a project before adding sprints.</small>}
       </label>
       <div className="form-grid">
         <label>
@@ -156,7 +194,7 @@ export function SprintForm({
         </div>
       </label>
       {errorMessage && <p className="form-error">{errorMessage}</p>}
-      <button className="primary-button" type="submit" disabled={isSaving}>
+      <button className="primary-button" type="submit" disabled={isSaving || projects.length === 0}>
         {editingSprint ? <Save aria-hidden="true" /> : <Plus aria-hidden="true" />}
         {isSaving ? "Saving" : editingSprint ? "Save sprint" : "Create sprint"}
       </button>

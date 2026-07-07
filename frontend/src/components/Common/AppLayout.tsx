@@ -1,4 +1,4 @@
-import { CheckSquare, LayoutDashboard, LogOut, Rows3, UserCircle } from "lucide-react";
+import { CheckSquare, FolderKanban, LayoutDashboard, LogOut, Rows3, UserCircle } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useLogout } from "../../hooks/useAuth";
 import { useAuthStore } from "../../store/authStore";
@@ -30,6 +30,10 @@ export function AppLayout() {
           <NavLink to="/tasks">
             <Rows3 aria-hidden="true" />
             Tasks
+          </NavLink>
+          <NavLink to="/projects">
+            <FolderKanban aria-hidden="true" />
+            Projects
           </NavLink>
           <NavLink to="/sprints">
             <CheckSquare aria-hidden="true" />

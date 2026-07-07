@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.taskmanager.dto.SprintCreateRequest;
 import com.taskmanager.dto.SprintUpdateRequest;
+import com.taskmanager.entity.Project;
 import com.taskmanager.entity.Sprint;
 import com.taskmanager.entity.Task;
 import com.taskmanager.entity.User;
@@ -17,6 +18,7 @@ import com.taskmanager.entity.enums.SprintStatus;
 import com.taskmanager.entity.enums.TaskPriority;
 import com.taskmanager.entity.enums.TaskStatus;
 import com.taskmanager.exception.AppException;
+import com.taskmanager.repository.ProjectRepository;
 import com.taskmanager.repository.SprintRepository;
 import com.taskmanager.repository.TaskRepository;
 import com.taskmanager.repository.UserRepository;
@@ -43,6 +45,9 @@ class SprintServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private ProjectRepository projectRepository;
+
     private SprintService sprintService;
 
     /**
@@ -50,7 +55,7 @@ class SprintServiceTest {
      */
     @BeforeEach
     void setUp() {
-        sprintService = new SprintService(sprintRepository, taskRepository, userRepository);
+        sprintService = new SprintService(sprintRepository, taskRepository, userRepository, projectRepository);
     }
 
     /**
@@ -59,11 +64,14 @@ class SprintServiceTest {
     @Test
     void createSprintSetsPlanningStatus() {
         UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
         User user = activeUser(userId);
+        Project project = project(projectId, user);
         LocalDate startDate = LocalDate.now().plusDays(1);
         LocalDate endDate = startDate.plusWeeks(2);
-        SprintCreateRequest request = new SprintCreateRequest("Sprint 1", "Initial sprint", startDate, endDate, List.of());
+        SprintCreateRequest request = new SprintCreateRequest("Sprint 1", "Initial sprint", projectId, startDate, endDate, List.of());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(projectRepository.findByIdAndUserId(projectId, userId)).thenReturn(Optional.of(project));
         when(sprintRepository.save(any(Sprint.class))).thenAnswer(invocation -> {
             Sprint sprint = invocation.getArgument(0);
             sprint.setId(UUID.randomUUID());
@@ -74,6 +82,9 @@ class SprintServiceTest {
 
         assertThat(response.name()).isEqualTo("Sprint 1");
         assertThat(response.userId()).isEqualTo(userId);
+        assertThat(response.projectId()).isEqualTo(projectId);
+        assertThat(response.projectName()).isEqualTo("Project 1");
+        assertThat(response.creatorName()).isEqualTo("alex");
         assertThat(response.status()).isEqualTo(SprintStatus.PLANNING);
         assertThat(response.startDate()).isEqualTo(startDate);
         assertThat(response.endDate()).isEqualTo(endDate);
@@ -83,6 +94,7 @@ class SprintServiceTest {
         verify(sprintRepository).save(sprintCaptor.capture());
         Sprint savedSprint = sprintCaptor.getValue();
         assertThat(savedSprint.getUser()).isSameAs(user);
+        assertThat(savedSprint.getProject()).isSameAs(project);
         assertThat(savedSprint.getStatus()).isEqualTo(SprintStatus.PLANNING);
         assertThat(savedSprint.getParticipants()).containsExactly(user);
     }
@@ -93,9 +105,11 @@ class SprintServiceTest {
     @Test
     void createSprintAddsParticipantsByUsernameOrEmail() {
         UUID userId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
         UUID miraId = UUID.randomUUID();
         UUID noahId = UUID.randomUUID();
         User user = activeUser(userId);
+        Project project = project(projectId, user);
         User mira = activeUser(miraId, "mira", "mira@example.com");
         User noah = activeUser(noahId, "noah", "noah@example.com");
         LocalDate startDate = LocalDate.now().plusDays(1);
@@ -103,11 +117,13 @@ class SprintServiceTest {
         SprintCreateRequest request = new SprintCreateRequest(
                 "Sprint 1",
                 "Initial sprint",
+                projectId,
                 startDate,
                 endDate,
                 List.of("mira", "noah@example.com")
         );
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(projectRepository.findByIdAndUserId(projectId, userId)).thenReturn(Optional.of(project));
         when(userRepository.findActiveByUsernameOrEmail("mira")).thenReturn(Optional.of(mira));
         when(userRepository.findActiveByUsernameOrEmail("noah@example.com")).thenReturn(Optional.of(noah));
         when(sprintRepository.save(any(Sprint.class))).thenAnswer(invocation -> {
@@ -129,13 +145,16 @@ class SprintServiceTest {
         UUID userId = UUID.randomUUID();
         UUID miraId = UUID.randomUUID();
         UUID noahId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
         UUID sprintId = UUID.randomUUID();
         User user = activeUser(userId);
+        Project project = project(projectId, user);
         User mira = activeUser(miraId, "mira", "mira@example.com");
         User noah = activeUser(noahId, "noah", "noah@example.com");
-        Sprint sprint = sprint(sprintId, user);
+        Sprint sprint = sprint(sprintId, user, project);
         sprint.setParticipants(new LinkedHashSet<>(List.of(user, mira)));
         SprintUpdateRequest request = new SprintUpdateRequest(
+                null,
                 null,
                 null,
                 null,
@@ -159,7 +178,8 @@ class SprintServiceTest {
     void deleteSprintDeletesOwnedSprint() {
         UUID userId = UUID.randomUUID();
         UUID sprintId = UUID.randomUUID();
-        Sprint sprint = sprint(sprintId, activeUser(userId));
+        User user = activeUser(userId);
+        Sprint sprint = sprint(sprintId, user, project(UUID.randomUUID(), user));
         when(sprintRepository.findByIdAndUserId(sprintId, userId)).thenReturn(Optional.of(sprint));
 
         sprintService.deleteSprint(sprintId, userId);
@@ -174,7 +194,7 @@ class SprintServiceTest {
     void createSprintRejectsEndDateOnOrBeforeStartDate() {
         UUID userId = UUID.randomUUID();
         LocalDate startDate = LocalDate.now().plusDays(1);
-        SprintCreateRequest request = new SprintCreateRequest("Sprint 1", null, startDate, startDate, List.of());
+        SprintCreateRequest request = new SprintCreateRequest("Sprint 1", null, UUID.randomUUID(), startDate, startDate, List.of());
 
         assertThatThrownBy(() -> sprintService.createSprint(request, userId))
                 .isInstanceOf(AppException.class)
@@ -194,7 +214,7 @@ class SprintServiceTest {
         UUID userId = UUID.randomUUID();
         UUID sprintId = UUID.randomUUID();
         User user = activeUser(userId);
-        Sprint sprint = sprint(sprintId, user);
+        Sprint sprint = sprint(sprintId, user, project(UUID.randomUUID(), user));
         when(sprintRepository.findAccessibleByIdAndUserId(sprintId, userId)).thenReturn(Optional.of(sprint));
         when(taskRepository.findAllBySprintId(sprintId)).thenReturn(List.of(
                 task(UUID.randomUUID(), user, sprint, TaskStatus.DONE, TaskPriority.HIGH),
@@ -222,7 +242,7 @@ class SprintServiceTest {
         UUID userId = UUID.randomUUID();
         UUID sprintId = UUID.randomUUID();
         User user = activeUser(userId);
-        Sprint sprint = sprint(sprintId, user);
+        Sprint sprint = sprint(sprintId, user, project(UUID.randomUUID(), user));
         when(sprintRepository.findAccessibleByIdAndUserId(sprintId, userId)).thenReturn(Optional.of(sprint));
         when(taskRepository.findAllBySprintId(sprintId)).thenReturn(List.of(
                 task(UUID.randomUUID(), user, sprint, TaskStatus.TODO, TaskPriority.MEDIUM),
@@ -263,15 +283,27 @@ class SprintServiceTest {
     /**
      * Builds a Sprint fixture owned by {@code user} and identified by {@code sprintId}.
      */
-    private static Sprint sprint(UUID sprintId, User user) {
+    private static Sprint sprint(UUID sprintId, User user, Project project) {
         Sprint sprint = new Sprint();
         sprint.setId(sprintId);
         sprint.setUser(user);
+        sprint.setProject(project);
         sprint.setName("Sprint 1");
         sprint.setStartDate(LocalDate.now());
         sprint.setEndDate(LocalDate.now().plusWeeks(2));
         sprint.setStatus(SprintStatus.PLANNING);
         return sprint;
+    }
+
+    /**
+     * Builds a Project fixture owned by {@code user} and identified by {@code projectId}.
+     */
+    private static Project project(UUID projectId, User user) {
+        Project project = new Project();
+        project.setId(projectId);
+        project.setUser(user);
+        project.setName("Project 1");
+        return project;
     }
 
     /**

@@ -8,6 +8,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { RegisterPage } from "./pages/RegisterPage";
+import { ProjectsPage } from "./pages/ProjectsPage";
 import { SprintBoardPage } from "./pages/SprintBoardPage";
 import { TasksPage } from "./pages/TasksPage";
 
@@ -45,6 +46,7 @@ export default function App() {
         <Route element={<AppLayout />}>
           <Route index element={<DashboardPage />} />
           <Route path="tasks" element={<TasksPage />} />
+          <Route path="projects" element={<ProjectsPage />} />
           <Route path="sprints" element={<SprintBoardPage />} />
         </Route>
       </Route>

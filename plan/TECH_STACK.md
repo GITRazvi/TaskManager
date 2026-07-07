@@ -249,6 +249,14 @@ UI Updates (optimistic + confirmed)
 
 ## Database Schema Diagram
 
+Current schema notes:
+- `users` own `projects`, `sprints`, and `tasks`.
+- `projects` group sprints and are owner-scoped.
+- `sprints.project_id` is required.
+- `tasks.sprint_id` remains optional so tasks can stay in the backlog.
+- `tasks.reviewer_id`, `story_points`, and `comments` support sprint review metadata and click-through task details.
+- Sprint participants are stored in `sprint_members` and can access sprint boards/tasks for those sprints.
+
 ```
 â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
 â”‚                        users                             â”‚
@@ -278,9 +286,12 @@ UI Updates (optimistic + confirmed)
 
 **Indexes:**
 - `idx_users_email`: Fast email lookups
+- `idx_projects_user_created`: Project lists by owner
 - `idx_sprints_user_status`: Sprint filtering by user
+- `idx_sprints_project_status`: Sprint filtering by project
 - `idx_tasks_sprint_status`: Kanban board queries
 - `idx_tasks_user_status`: User task filtering
+- `idx_tasks_reviewer`: Reviewer task lookups
 - `idx_tasks_due_date`: Due date sorting
 
 ---
@@ -313,12 +324,20 @@ DELETE /api/tasks/{id}         â†’ Delete task
 PATCH  /api/tasks/{id}/status  â†’ Update status only
 ```
 
+### Project Endpoints
+```
+GET    /api/projects            -> List user projects
+GET    /api/projects/{id}       -> Get project details
+POST   /api/projects            -> Create project
+PUT    /api/projects/{id}       -> Update project
+```
+
 ### Sprint Endpoints
 ```
 GET    /api/sprints            â†’ List user sprints
 GET    /api/sprints/{id}       â†’ Get sprint details
-POST   /api/sprints            â†’ Create sprint
-PUT    /api/sprints/{id}       â†’ Update sprint
+POST   /api/sprints            â†’ Create sprint with required projectId
+PUT    /api/sprints/{id}       â†’ Update sprint, including projectId reassignment by owner
 GET    /api/sprints/{id}/tasks â†’ Get Kanban board data
 GET    /api/sprints/{id}/stats â†’ Get sprint statistics
 ```
@@ -345,14 +364,17 @@ backend/
 â”‚   â”‚   â”œâ”€â”€ AuthService.java
 â”‚   â”‚   â”œâ”€â”€ UserService.java
 â”‚   â”‚   â”œâ”€â”€ TaskService.java
+â”‚   â”‚   â”œâ”€â”€ ProjectService.java
 â”‚   â”‚   â””â”€â”€ SprintService.java
 â”‚   â”œâ”€â”€ repository/
 â”‚   â”‚   â”œâ”€â”€ UserRepository.java
 â”‚   â”‚   â”œâ”€â”€ TaskRepository.java
+â”‚   â”‚   â”œâ”€â”€ ProjectRepository.java
 â”‚   â”‚   â””â”€â”€ SprintRepository.java
 â”‚   â”œâ”€â”€ entity/
 â”‚   â”‚   â”œâ”€â”€ User.java
 â”‚   â”‚   â”œâ”€â”€ Task.java
+â”‚   â”‚   â”œâ”€â”€ Project.java
 â”‚   â”‚   â”œâ”€â”€ Sprint.java
 â”‚   â”‚   â””â”€â”€ enums/
 â”‚   â”‚       â”œâ”€â”€ TaskStatus.java
@@ -391,7 +413,10 @@ backend/
 â”‚       â”œâ”€â”€ V3__Create_sprints_table.sql
 â”‚       â”œâ”€â”€ V4__Add_sprint_to_tasks.sql
 â”‚       â”œâ”€â”€ V5__Create_audit_logs_table.sql
-â”‚       â””â”€â”€ V6__Add_indexes.sql
+â”‚       â”œâ”€â”€ V6__Add_indexes.sql
+â”‚       â”œâ”€â”€ V7__Create_sprint_members_table.sql
+â”‚       â”œâ”€â”€ V9__Create_projects_and_link_sprints.sql
+â”‚       â””â”€â”€ V10__Add_task_review_metadata.sql
 â”œâ”€â”€ src/test/java/com/taskmanager/
 â”‚   â”œâ”€â”€ service/
 â”‚   â”‚   â”œâ”€â”€ AuthServiceTest.java
@@ -417,6 +442,7 @@ frontend/
 â”‚   â”‚   â”œâ”€â”€ client.ts           (Axios instance)
 â”‚   â”‚   â”œâ”€â”€ auth.ts             (Auth endpoints)
 â”‚   â”‚   â”œâ”€â”€ tasks.ts            (Task endpoints)
+â”‚   â”‚   â”œâ”€â”€ projects.ts         (Project endpoints)
 â”‚   â”‚   â””â”€â”€ sprints.ts          (Sprint endpoints)
 â”‚   â”œâ”€â”€ components/
 â”‚   â”‚   â”œâ”€â”€ Auth/
@@ -427,6 +453,7 @@ frontend/
 â”‚   â”‚   â”‚   â”œâ”€â”€ TaskList.tsx
 â”‚   â”‚   â”‚   â”œâ”€â”€ TaskForm.tsx
 â”‚   â”‚   â”‚   â”œâ”€â”€ TaskCard.tsx
+â”‚   â”‚   â”‚   â”œâ”€â”€ TaskDetails.tsx
 â”‚   â”‚   â”‚   â””â”€â”€ TaskFilters.tsx
 â”‚   â”‚   â”œâ”€â”€ Sprints/
 â”‚   â”‚   â”‚   â”œâ”€â”€ SprintBoard.tsx  (Kanban)
@@ -443,6 +470,7 @@ frontend/
 â”‚   â”œâ”€â”€ hooks/
 â”‚   â”‚   â”œâ”€â”€ useAuth.ts          (Auth context)
 â”‚   â”‚   â”œâ”€â”€ useTasks.ts         (TanStack Query)
+â”‚   â”‚   â”œâ”€â”€ useProjects.ts      (TanStack Query)
 â”‚   â”‚   â”œâ”€â”€ useSprints.ts       (TanStack Query)
 â”‚   â”‚   â””â”€â”€ useLocalStorage.ts
 â”‚   â”œâ”€â”€ pages/
@@ -450,6 +478,7 @@ frontend/
 â”‚   â”‚   â”œâ”€â”€ RegisterPage.tsx
 â”‚   â”‚   â”œâ”€â”€ DashboardPage.tsx
 â”‚   â”‚   â”œâ”€â”€ TasksPage.tsx
+â”‚   â”‚   â”œâ”€â”€ ProjectsPage.tsx
 â”‚   â”‚   â”œâ”€â”€ SprintBoardPage.tsx
 â”‚   â”‚   â””â”€â”€ NotFoundPage.tsx
 â”‚   â”œâ”€â”€ store/
@@ -597,5 +626,5 @@ docker-compose logs -f
 
 ---
 
-**Version:** 1.0  
-**Last Updated:** 2026-07-03
+**Version:** 1.1  
+**Last Updated:** 2026-07-06

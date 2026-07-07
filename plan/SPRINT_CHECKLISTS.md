@@ -186,6 +186,7 @@
 - [ ] Create `TaskStatus.java` enum (TODO, IN_PROGRESS, DONE)
 - [ ] Create `TaskPriority.java` enum (LOW, MEDIUM, HIGH, CRITICAL)
 - [ ] Create V2__Create_tasks_table.sql migration
+- [x] Add reviewer, story points, and comments metadata to tasks
 - [ ] Create `TaskRepository.java`
   - [ ] `List<Task> findAllByUserId(UUID userId)`
   - [ ] `Task findByIdAndUserId(UUID id, UUID userId)`
@@ -271,6 +272,7 @@
 
 - [ ] Create `src/components/Tasks/TaskForm.tsx`
   - [ ] Form fields: title, description, priority, dueDate
+  - [x] Form fields: reviewer, story points, comments
   - [ ] React Hook Form + Zod validation
   - [ ] Create mode (POST) vs Edit mode (PUT)
   - [ ] Submit handler
@@ -305,19 +307,29 @@
 
 ---
 
-## Sprint 3: Sprints & Kanban Board (Weeks 5-6)
+## Sprint 3: Projects, Sprints & Kanban Board (Weeks 5-6)
 
 ### Backend Tasks
 
 #### Entities & Database
+- [x] Create `Project.java` entity
 - [ ] Create `Sprint.java` entity
 - [ ] Create `SprintStatus.java` enum (PLANNING, ACTIVE, COMPLETED, ARCHIVED)
 - [ ] Create V3__Create_sprints_table.sql migration
 - [ ] Create V4__Add_sprint_to_tasks.sql migration
+- [x] Create V9__Create_projects_and_link_sprints.sql migration
+- [x] Make sprints require a linked `project_id`
+- [x] Backfill existing sprints into per-user `General` projects
+- [x] Create `ProjectRepository.java` with ownership queries
 - [ ] Create `SprintRepository.java` with queries
 - [ ] Add `findBySprintIdAndStatus(UUID sprintId, TaskStatus status)` to `TaskRepository.java`
 
 #### Service Layer
+- [x] Create `ProjectService.java` with methods:
+  - [x] `Project createProject(ProjectCreateRequest, UUID userId)`
+  - [x] `List<Project> getUserProjects(UUID userId)`
+  - [x] `Project getProjectById(UUID id, UUID userId)`
+  - [x] `Project updateProject(UUID id, ProjectUpdateRequest, UUID userId)`
 - [ ] Create `SprintService.java` with methods:
   - [ ] `Sprint createSprint(SprintCreateRequest, UUID userId)`
   - [ ] `List<Sprint> getUserSprints(UUID userId)`
@@ -326,8 +338,14 @@
   - [ ] `List<Task> getSprintBoard(UUID sprintId)` - tasks grouped by status
   - [ ] `SprintStats calculateStatistics(UUID sprintId)`
 - [ ] Add validation (end_date > start_date)
+- [x] Add sprint project ownership validation
 
 #### Controller
+- [x] Create `ProjectController.java` with endpoints:
+  - [x] GET /api/projects
+  - [x] GET /api/projects/{id}
+  - [x] POST /api/projects
+  - [x] PUT /api/projects/{id}
 - [ ] Create `SprintController.java` with endpoints:
   - [ ] GET /api/sprints
   - [ ] GET /api/sprints/{id}
@@ -337,12 +355,18 @@
   - [ ] GET /api/sprints/{id}/stats
 
 #### DTOs
+- [x] Create `ProjectCreateRequest.java`
+- [x] Create `ProjectUpdateRequest.java`
+- [x] Create `ProjectResponse.java`
 - [ ] Create `SprintCreateRequest.java`
 - [ ] Create `SprintResponse.java`
 - [ ] Create `SprintBoardResponse.java` (tasks grouped by status)
 - [ ] Create `SprintStatsResponse.java` (completion %, velocity)
 
 #### Testing
+- [x] Create `ProjectServiceTest.java`
+  - [x] Test project creation
+  - [x] Test blank project name rejection
 - [ ] Create `SprintServiceTest.java`
   - [ ] Test sprint creation
   - [ ] Test statistics calculation
@@ -353,13 +377,17 @@
 ### Frontend Tasks
 
 #### API Integration
+- [x] Create `src/api/projects.ts` (project endpoints)
+- [x] Create `src/hooks/useProjects.ts` (TanStack Query)
 - [ ] Create `src/api/sprints.ts` (sprint endpoints)
 - [ ] Create `src/hooks/useSprints.ts` (TanStack Query)
 
 #### Components
+- [x] Create project creation/editing UI
 - [ ] Create `src/components/Sprints/SprintForm.tsx`
-  - [ ] Form fields: name, description, startDate, endDate
+  - [x] Form fields: name, description, project, startDate, endDate
   - [ ] Validation (endDate > startDate)
+  - [x] Require project selection before sprint creation
 
 - [ ] Create `src/components/Sprints/SprintBoard.tsx` (Main Kanban Component)
   - [ ] Display 3 columns: TODO, IN_PROGRESS, DONE
@@ -370,6 +398,9 @@
 - [ ] Create `src/components/Tasks/TaskCard.tsx` modifications
   - [ ] Make draggable within Kanban board
   - [ ] Show priority/due date
+  - [x] Open task details from sprint board click
+  - [x] Show description, comments, assignee, reviewer, story points, sprint, and parent project link in task details
+  - [x] Edit story points directly from the opened sprint-board task details
 
 - [ ] Setup Drag-and-Drop Library
   - [ ] Install dnd-kit
@@ -383,6 +414,7 @@
   - [ ] Install recharts library
 
 #### Pages
+- [x] Create `src/pages/ProjectsPage.tsx`
 - [ ] Create `src/pages/SprintBoardPage.tsx`
   - [ ] Fetch sprint by ID
   - [ ] Render SprintBoard
@@ -398,10 +430,12 @@
 - [ ] All backend unit tests passing (75%+ coverage)
 - [ ] All backend integration tests passing
 - [ ] All frontend component tests passing
-- [ ] User can create a sprint
-- [ ] User can view sprint board (Kanban)
+- [x] User can create and edit projects
+- [x] User can create a sprint
+- [x] Sprint creation requires a linked project
+- [x] User can view sprint board (Kanban)
 - [ ] Drag-and-drop updates task status
-- [ ] Sprint statistics calculated and displayed
+- [x] Sprint statistics calculated and displayed
 - [ ] Kanban responsive on all screen sizes
 - [ ] Code review completed
 - [ ] PR merged to main
@@ -458,6 +492,7 @@
   - [ ] User registration flow
   - [ ] User login flow
   - [ ] Create task flow
+  - [ ] Create project flow
   - [ ] Create sprint flow
   - [ ] View sprint board flow
   - [ ] Edit/delete task flow
@@ -649,5 +684,5 @@ git push main
 
 ---
 
-**Version:** 1.0  
-**Last Updated:** 2026-07-03
+**Version:** 1.1  
+**Last Updated:** 2026-07-07

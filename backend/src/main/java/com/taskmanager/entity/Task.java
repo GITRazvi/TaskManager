@@ -3,6 +3,7 @@ package com.taskmanager.entity;
 
 import com.taskmanager.entity.enums.TaskPriority;
 import com.taskmanager.entity.enums.TaskStatus;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -12,9 +13,16 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -66,6 +74,21 @@ public class Task {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigned_to")
     private User assignedTo;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reviewer_id")
+    private User reviewer;
+
+    @Column(name = "story_points")
+    private Integer storyPoints;
+
+    @Column(name = "estimated_hours", precision = 8, scale = 2)
+    private BigDecimal estimatedHours;
+
+    @OneToMany(mappedBy = "task", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("createdAt ASC")
+    @Builder.Default
+    private List<TaskComment> comments = new ArrayList<>();
 
     @Column(name = "due_date")
     private LocalDate dueDate;
@@ -191,6 +214,62 @@ public class Task {
     }
 
     /**
+     * Returns the optional user assigned to review this task.
+     */
+    public User getReviewer() {
+        return reviewer;
+    }
+
+    /**
+     * Sets the optional user assigned to review this task.
+     */
+    public void setReviewer(User reviewer) {
+        this.reviewer = reviewer;
+    }
+
+    /**
+     * Returns the developer-assigned story point estimate.
+     */
+    public Integer getStoryPoints() {
+        return storyPoints;
+    }
+
+    /**
+     * Sets the developer-assigned story point estimate.
+     */
+    public void setStoryPoints(Integer storyPoints) {
+        this.storyPoints = storyPoints;
+    }
+
+    /**
+     * Returns the developer-estimated or logged hours for completing this task.
+     */
+    public BigDecimal getEstimatedHours() {
+        return estimatedHours;
+    }
+
+    /**
+     * Sets the developer-estimated or logged hours for completing this task.
+     */
+    public void setEstimatedHours(BigDecimal estimatedHours) {
+        this.estimatedHours = estimatedHours;
+    }
+
+    /**
+     * Returns the comment history attached to this task.
+     */
+    public List<TaskComment> getComments() {
+        return comments;
+    }
+
+    /**
+     * Sets the comment history attached to this task.
+     */
+    public void setComments(List<TaskComment> comments) {
+        this.comments = comments;
+    }
+
+    /**
      * Returns the optional due date for this task.
      */
     public LocalDate getDueDate() {
@@ -230,5 +309,21 @@ public class Task {
      */
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    @PrePersist
+    void prePersist() {
+        LocalDateTime now = LocalDateTime.now();
+        if (createdAt == null) {
+            createdAt = now;
+        }
+        if (updatedAt == null) {
+            updatedAt = now;
+        }
+    }
+
+    @PreUpdate
+    void preUpdate() {
+        updatedAt = LocalDateTime.now();
     }
 }

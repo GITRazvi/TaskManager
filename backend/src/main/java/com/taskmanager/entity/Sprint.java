@@ -49,6 +49,10 @@ public class Sprint {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "project_id", nullable = false)
+    private Project project;
+
     @Column(nullable = false)
     private String name;
 
@@ -113,6 +117,20 @@ public class Sprint {
      */
     public void setUser(User user) {
         this.user = user;
+    }
+
+    /**
+     * Returns the project that groups this sprint.
+     */
+    public Project getProject() {
+        return project;
+    }
+
+    /**
+     * Sets the project that groups this sprint.
+     */
+    public void setProject(Project project) {
+        this.project = project;
     }
 
     /**

@@ -1,7 +1,7 @@
 ﻿<!-- File responsibility: Summarizes completed implementation work and current project capabilities. -->
 # Implemented So Far
 
-Status snapshot: 2026-07-03.
+Status snapshot: 2026-07-07.
 
 This file reflects what is present in the repository source tree. It does not mark runtime behavior as complete unless the supporting application code exists.
 
@@ -58,12 +58,18 @@ This file reflects what is present in the repository source tree. It does not ma
   - `backend/src/main/java/com/taskmanager/entity/Task.java`
 - Created `Sprint` entity:
   - `backend/src/main/java/com/taskmanager/entity/Sprint.java`
+- Created `Project` entity:
+  - `backend/src/main/java/com/taskmanager/entity/Project.java`
 - Added entity relationships:
   - User to tasks
   - User to sprints
+  - User to projects
+  - Project to sprints
   - Task to user
   - Task to sprint
   - Task to assignee
+  - Task to reviewer
+  - Sprint to project
   - Sprint to tasks
 - Added timestamp fields using Hibernate creation/update timestamps.
 - Added UUID primary key generation.
@@ -85,6 +91,8 @@ This file reflects what is present in the repository source tree. It does not ma
   - `backend/src/main/java/com/taskmanager/repository/TaskRepository.java`
 - Created `SprintRepository`:
   - `backend/src/main/java/com/taskmanager/repository/SprintRepository.java`
+- Created `ProjectRepository`:
+  - `backend/src/main/java/com/taskmanager/repository/ProjectRepository.java`
 - Added repository methods for:
   - User lookup by email and username
   - User existence checks
@@ -92,7 +100,8 @@ This file reflects what is present in the repository source tree. It does not ma
   - Task lookup by task ID and user ID
   - Sprint task lookup by status
   - Task filtering by status, priority, and due date range
-  - Sprint lookup by user, status, and ID
+  - Sprint lookup by user, status, ID, and participant access
+  - Project lookup by user and ID
 
 ## Database Migrations
 
@@ -103,12 +112,20 @@ This file reflects what is present in the repository source tree. It does not ma
   - `V4__Add_sprint_to_tasks.sql`
   - `V5__Create_audit_logs_table.sql`
   - `V6__Add_indexes.sql`
+  - `V7__Create_sprint_members_table.sql`
+  - `V9__Create_projects_and_link_sprints.sql`
+  - `V10__Add_task_review_metadata.sql`
 - Added database tables for:
   - users
   - tasks
   - sprints
+  - sprint_members
+  - projects
   - audit_logs
 - Added indexes for common user, task, sprint, audit log, and timestamp lookups.
+- Added required `project_id` linkage for sprints.
+- Added a migration path that creates a per-user `General` project for existing sprints.
+- Added task review metadata columns for reviewer, story points, and comments.
 
 ## Backend Security Foundation
 
@@ -161,6 +178,8 @@ This file reflects what is present in the repository source tree. It does not ma
   - `PUT /api/tasks/{id}`
   - `DELETE /api/tasks/{id}`
   - `PATCH /api/tasks/{id}/status`
+- Extended task create/update/response payloads with reviewer, story points, comments, sprint name, and parent project metadata.
+- Enforced that a reviewer for a sprint task belongs to the same sprint, while allowing self-review.
 - Implemented sprint DTOs, service logic, board/statistics responses, and endpoints:
   - `GET /api/sprints`
   - `GET /api/sprints/{id}`
@@ -168,6 +187,14 @@ This file reflects what is present in the repository source tree. It does not ma
   - `PUT /api/sprints/{id}`
   - `GET /api/sprints/{id}/tasks`
   - `GET /api/sprints/{id}/stats`
+- Implemented project DTOs, service logic, and endpoints:
+  - `GET /api/projects`
+  - `GET /api/projects/{id}`
+  - `POST /api/projects`
+  - `PUT /api/projects/{id}`
+- Enforced that sprint create requests include a `projectId`.
+- Enforced that sprint project assignment can only use projects owned by the authenticated user.
+- Exposed `projectId` and `projectName` on sprint API responses.
 - Added explicit entity getters/setters so the backend compiles reliably even when Lombok annotation processing is unavailable.
 - Verified backend compilation with:
   - `mvn test` using `JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-25.0.3.9-hotspot`
@@ -207,20 +234,29 @@ This file reflects what is present in the repository source tree. It does not ma
 - Implemented API modules for:
   - auth
   - tasks
+  - projects
   - sprints
 - Implemented Zustand auth persistence for access token, refresh token, and current user profile.
-- Implemented TanStack Query hooks for auth, task, and sprint workflows.
+- Implemented TanStack Query hooks for auth, task, project, and sprint workflows.
 - Implemented authentication pages and forms:
   - login
   - registration
   - protected route handling
   - logout from the app shell
-- Implemented the authenticated application shell with dashboard, tasks, and sprints navigation.
+- Implemented the authenticated application shell with dashboard, tasks, projects, and sprints navigation.
 - Implemented task UI for listing, filtering, creating, editing, deleting, status changes, and pagination.
+- Added task form inputs for reviewer, story points, and comments.
+- Implemented project UI for creating, listing, and editing projects.
 - Implemented sprint UI for creating/selecting sprints, viewing sprint statistics, and rendering a status board.
+- Updated sprint creation/editing so users must select a linked project.
+- Displayed the linked project name on the sprint board.
+- Updated task click details from task lists and sprint boards to show description, comments, assignee, reviewer, story points, sprint, parent project link, and timestamps.
+- Added inline story point editing directly inside the opened task details dialog, including tasks opened from the sprint board.
 - Added a frontend smoke test for the shared loading component.
 - Verified frontend build with `npm.cmd run build`.
 - Verified frontend tests with `npm.cmd test -- --run`.
+- Verified backend tests with `mvn test` after task review metadata changes:
+  - 19 tests passing.
 - Started the Vite dev server at `http://127.0.0.1:5173/`.
 - Added frontend containerization:
   - `frontend/Dockerfile`
@@ -233,4 +269,4 @@ This file reflects what is present in the repository source tree. It does not ma
 
 ## Current Implementation Boundary
 
-The repository currently contains backend foundation, domain models, repositories, migrations, security configuration, JWT authentication support, REST controllers, service logic, shared response/error handling, documentation, a first usable frontend implementation, and Docker Compose wiring for database, backend, and frontend services. It does not yet contain broad frontend component coverage, backend controller/repository coverage, or CI/CD.
+The repository currently contains backend foundation, domain models, repositories, migrations, security configuration, JWT authentication support, REST controllers, service logic, shared response/error handling, documentation, a first usable frontend implementation, task review metadata, project management, project-linked sprints, and Docker Compose wiring for database, backend, and frontend services. It does not yet contain broad frontend component coverage, backend controller/repository coverage, or CI/CD.

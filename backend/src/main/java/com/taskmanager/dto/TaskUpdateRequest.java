@@ -3,7 +3,9 @@ package com.taskmanager.dto;
 
 import com.taskmanager.entity.enums.TaskPriority;
 import com.taskmanager.entity.enums.TaskStatus;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -16,6 +18,12 @@ public record TaskUpdateRequest(
         TaskPriority priority,
         LocalDate dueDate,
         UUID sprintId,
-        UUID assignedToId
+        UUID assignedToId,
+        UUID reviewerId,
+        @PositiveOrZero
+        Integer storyPoints,
+        @PositiveOrZero
+        BigDecimal estimatedHours,
+        String comments
 ) {
 }

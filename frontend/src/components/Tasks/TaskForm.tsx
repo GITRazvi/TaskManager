@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Save } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { getApiErrorMessage } from "../../api/client";
@@ -13,7 +13,17 @@ const schema = z.object({
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]).optional(),
   dueDate: z.string().optional(),
   sprintId: z.string().optional(),
-  assignedToId: z.string().optional()
+  assignedToId: z.string().optional(),
+  reviewerId: z.string().optional(),
+  storyPoints: z
+    .string()
+    .optional()
+    .refine((value) => !value || /^\d+$/.test(value), "Story points must be a whole number"),
+  estimatedHours: z
+    .string()
+    .optional()
+    .refine((value) => !value || /^\d+(\.\d{1,2})?$/.test(value), "Hours must be 0 or higher"),
+  comments: z.string().optional()
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -22,11 +32,17 @@ export function TaskForm({
   sprints,
   users,
   editingTask,
+  defaultSprintId = "",
+  lockSprint = false,
+  hideHeading = false,
   onDone
 }: {
   sprints: Sprint[];
   users: User[];
   editingTask?: Task | null;
+  defaultSprintId?: string;
+  lockSprint?: boolean;
+  hideHeading?: boolean;
   onDone?: () => void;
 }) {
   const createTask = useCreateTask();
@@ -38,10 +54,20 @@ export function TaskForm({
       description: "",
       priority: "MEDIUM",
       dueDate: "",
-      sprintId: "",
-      assignedToId: ""
+      sprintId: defaultSprintId,
+      assignedToId: "",
+      reviewerId: "",
+      storyPoints: "",
+      estimatedHours: "",
+      comments: ""
     }
   });
+  const selectedSprintId = form.watch("sprintId");
+  const selectedSprint = useMemo(
+    () => sprints.find((sprint) => sprint.id === selectedSprintId),
+    [selectedSprintId, sprints]
+  );
+  const reviewerOptions = selectedSprint?.participants?.length ? selectedSprint.participants : users;
 
   useEffect(() => {
     form.reset({
@@ -49,18 +75,36 @@ export function TaskForm({
       description: editingTask?.description ?? "",
       priority: (editingTask?.priority ?? "MEDIUM") as TaskPriority,
       dueDate: editingTask?.dueDate ?? "",
-      sprintId: editingTask?.sprintId ?? "",
-      assignedToId: editingTask?.assignedToId ?? ""
+      sprintId: editingTask?.sprintId ?? defaultSprintId,
+      assignedToId: editingTask?.assignedToId ?? "",
+      reviewerId: editingTask?.reviewerId ?? "",
+      storyPoints: editingTask?.storyPoints == null ? "" : String(editingTask.storyPoints),
+      estimatedHours: editingTask?.estimatedHours == null ? "" : String(editingTask.estimatedHours),
+      comments: ""
     });
-  }, [editingTask, form]);
+  }, [defaultSprintId, editingTask, form]);
+
+  useEffect(() => {
+    const reviewerId = form.getValues("reviewerId");
+    if (!reviewerId || reviewerOptions.some((user) => user.id === reviewerId)) {
+      return;
+    }
+
+    form.setValue("reviewerId", "");
+  }, [form, reviewerOptions]);
 
   const onSubmit = form.handleSubmit((values) => {
     const payload = {
-      ...values,
+      title: values.title,
+      priority: values.priority,
       description: values.description || undefined,
       dueDate: values.dueDate || undefined,
       sprintId: values.sprintId || undefined,
-      assignedToId: values.assignedToId || undefined
+      assignedToId: values.assignedToId || undefined,
+      reviewerId: values.reviewerId || undefined,
+      storyPoints: values.storyPoints ? Number(values.storyPoints) : undefined,
+      estimatedHours: values.estimatedHours ? Number(values.estimatedHours) : undefined,
+      comments: values.comments || undefined
     };
 
     if (editingTask) {
@@ -83,8 +127,12 @@ export function TaskForm({
           description: "",
           priority: "MEDIUM",
           dueDate: "",
-          sprintId: "",
-          assignedToId: ""
+          sprintId: defaultSprintId,
+          assignedToId: "",
+          reviewerId: "",
+          storyPoints: "",
+          estimatedHours: "",
+          comments: ""
         });
         onDone?.();
       }
@@ -97,9 +145,11 @@ export function TaskForm({
 
   return (
     <form className="panel-form" onSubmit={onSubmit}>
-      <div className="section-heading">
-        <h2>{editingTask ? "Edit Task" : "New Task"}</h2>
-      </div>
+      {!hideHeading && (
+        <div className="section-heading">
+          <h2>{editingTask ? "Edit Task" : "New Task"}</h2>
+        </div>
+      )}
       <label>
         Title
         <input {...form.register("title")} />
@@ -108,6 +158,10 @@ export function TaskForm({
       <label>
         Description
         <textarea rows={4} {...form.register("description")} />
+      </label>
+      <label>
+        {editingTask ? "New comment" : "Initial comment"}
+        <textarea rows={3} {...form.register("comments")} />
       </label>
       <div className="form-grid">
         <label>
@@ -125,21 +179,46 @@ export function TaskForm({
         </label>
       </div>
       <label>
-        Sprint
-        <select {...form.register("sprintId")}>
-          <option value="">Backlog</option>
-          {sprints.map((sprint) => (
-            <option key={sprint.id} value={sprint.id}>
-              {sprint.name}
-            </option>
-          ))}
-        </select>
+        Story points
+        <input min="0" step="1" type="number" {...form.register("storyPoints")} />
+        {form.formState.errors.storyPoints && <small>{form.formState.errors.storyPoints.message}</small>}
       </label>
+      <label>
+        Estimated hours
+        <input min="0" step="0.25" type="number" {...form.register("estimatedHours")} />
+        {form.formState.errors.estimatedHours && <small>{form.formState.errors.estimatedHours.message}</small>}
+      </label>
+      {lockSprint ? (
+        <input type="hidden" {...form.register("sprintId")} />
+      ) : (
+        <label>
+          Sprint
+          <select {...form.register("sprintId")}>
+            <option value="">Backlog</option>
+            {sprints.map((sprint) => (
+              <option key={sprint.id} value={sprint.id}>
+                {sprint.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label>
         Assignee
         <select {...form.register("assignedToId")}>
           <option value="">Unassigned</option>
           {users.map((user) => (
+            <option key={user.id} value={user.id}>
+              {user.fullName || user.username}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Reviewer
+        <select {...form.register("reviewerId")}>
+          <option value="">No reviewer</option>
+          {reviewerOptions.map((user) => (
             <option key={user.id} value={user.id}>
               {user.fullName || user.username}
             </option>

@@ -12,6 +12,9 @@ import java.util.UUID;
 public record SprintResponse(
         UUID id,
         UUID userId,
+        UUID projectId,
+        String projectName,
+        String creatorName,
         String name,
         String description,
         LocalDate startDate,
@@ -29,6 +32,9 @@ public record SprintResponse(
         return new SprintResponse(
                 sprint.getId(),
                 sprint.getUser().getId(),
+                sprint.getProject().getId(),
+                sprint.getProject().getName(),
+                displayName(sprint.getUser()),
                 sprint.getName(),
                 sprint.getDescription(),
                 sprint.getStartDate(),
@@ -42,5 +48,11 @@ public record SprintResponse(
                 sprint.getCreatedAt(),
                 sprint.getUpdatedAt()
         );
+    }
+
+    private static String displayName(com.taskmanager.entity.User user) {
+        return user.getFullName() == null || user.getFullName().isBlank()
+                ? user.getUsername()
+                : user.getFullName();
     }
 }

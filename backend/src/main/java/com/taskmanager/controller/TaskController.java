@@ -2,6 +2,9 @@
 package com.taskmanager.controller;
 
 import com.taskmanager.dto.ApiResponse;
+import com.taskmanager.dto.TaskCommentAttachment;
+import com.taskmanager.dto.TaskCommentCreateRequest;
+import com.taskmanager.dto.TaskCommentResponse;
 import com.taskmanager.dto.TaskCreateRequest;
 import com.taskmanager.dto.TaskListResponse;
 import com.taskmanager.dto.TaskResponse;
@@ -15,7 +18,10 @@ import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -28,6 +34,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/tasks")
@@ -42,13 +49,14 @@ public class TaskController {
     }
 
     /**
-     * Lists authenticated-user tasks using optional status, priority, due-date range, and pagination variables.
+     * Lists authenticated-user tasks using optional status, priority, assignee, due-date range, and pagination variables.
      */
     @GetMapping
     public ResponseEntity<ApiResponse<TaskListResponse>> getTasks(
             @AuthenticationPrincipal UserPrincipal principal,
             @RequestParam(required = false) TaskStatus status,
             @RequestParam(required = false) TaskPriority priority,
+            @RequestParam(required = false) UUID assignedToId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(defaultValue = "0") int page,
@@ -58,6 +66,7 @@ public class TaskController {
                 principal.getId(),
                 status,
                 priority,
+                assignedToId,
                 startDate,
                 endDate,
                 page,
@@ -109,6 +118,65 @@ public class TaskController {
                 taskService.updateTask(id, principal.getId(), request),
                 "Task updated successfully"
         ));
+    }
+
+    /**
+     * Appends a new comment to a visible task for the authenticated user.
+     */
+    @PostMapping(value = "/{id}/comments", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ApiResponse<TaskCommentResponse>> addComment(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody TaskCommentCreateRequest request
+    ) {
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success(
+                        taskService.addComment(id, principal.getId(), request),
+                        "Comment added successfully"
+                ));
+    }
+
+    /**
+     * Appends a new multipart comment with optional attachment to a visible task for the authenticated user.
+     */
+    @PostMapping(value = "/{id}/comments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<TaskCommentResponse>> addCommentWithAttachment(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam(required = false) String content,
+            @RequestParam(required = false) MultipartFile attachment
+    ) {
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success(
+                        taskService.addComment(id, principal.getId(), content, attachment),
+                        "Comment added successfully"
+                ));
+    }
+
+    /**
+     * Downloads a comment attachment from a task visible to the authenticated user.
+     */
+    @GetMapping("/{taskId}/comments/{commentId}/attachment")
+    public ResponseEntity<byte[]> downloadCommentAttachment(
+            @PathVariable UUID taskId,
+            @PathVariable UUID commentId,
+            @AuthenticationPrincipal UserPrincipal principal
+    ) {
+        TaskCommentAttachment attachment = taskService.getCommentAttachment(taskId, commentId, principal.getId());
+        String contentType = attachment.contentType() == null || attachment.contentType().isBlank()
+                ? MediaType.APPLICATION_OCTET_STREAM_VALUE
+                : attachment.contentType();
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(contentType))
+                .contentLength(attachment.size())
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
+                        .filename(attachment.fileName() == null ? "attachment" : attachment.fileName())
+                        .build()
+                        .toString())
+                .body(attachment.data());
     }
 
     /**

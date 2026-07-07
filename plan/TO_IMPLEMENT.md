@@ -1,7 +1,7 @@
 ﻿<!-- File responsibility: Lists remaining features, fixes, and follow-up implementation tasks. -->
 # To Implement
 
-Status snapshot: 2026-07-03.
+Status snapshot: 2026-07-07.
 
 This file tracks the remaining implementation work based on the current repository state and the sprint plan.
 
@@ -12,8 +12,19 @@ This file tracks the remaining implementation work based on the current reposito
 - Add a custom authentication entry point and access denied handler so Spring Security `401` and `403` responses use the same `ApiResponse` shape as application errors.
 - Decide whether users should be able to assign tasks to other users; the current endpoint pass only allows assignment to the current user.
 - Add a way to clear nullable task fields such as `sprintId`, `assignedToId`, and `dueDate` if the product needs explicit unassignment.
-- Add delete/archive behavior for sprints if required.
+- Decide whether task comments should stay as a single editable notes field or become a threaded comment model with authors and timestamps.
+- Add delete/archive behavior for projects if required.
 - Add OpenAPI annotations/examples for the implemented endpoint contracts.
+
+## Backend Project And Sprint Follow-Up
+
+- Decide whether projects should support shared membership, or remain owner-scoped while sprint participants provide collaboration.
+- Add project deletion behavior only after defining what should happen to linked sprints and tasks.
+- Add controller/integration tests for:
+  - Project endpoints.
+  - Sprint creation with a required `projectId`.
+  - Rejecting sprint creation or update with a project owned by another user.
+- Verify Flyway migration `V9__Create_projects_and_link_sprints.sql` against an existing database with sprints.
 
 ## Backend Audit Logging
 
@@ -44,12 +55,14 @@ This file tracks the remaining implementation work based on the current reposito
   - `UserService`
   - `TaskService`
   - `SprintService`
+  - `ProjectService`
   - JWT provider/filter behavior
 - Add repository tests where custom query behavior needs verification.
 - Add controller integration tests for:
   - Auth endpoints
   - User endpoints
   - Task endpoints
+  - Project endpoints
   - Sprint endpoints
 - Add security tests for:
   - Unauthenticated access rejection.
@@ -81,14 +94,19 @@ This file tracks the remaining implementation work based on the current reposito
 - Add delete confirmation before task removal.
 - Keep URL query params in sync with filters if required by the plan.
 - Add richer empty/error states for backend downtime and expired sessions.
-- Add assignee handling if cross-user assignment becomes supported by the backend.
+- Add explicit clear/unassign controls for assignee, reviewer, sprint, due date, story points, and comments if the product requires clearing those fields after creation.
 
 ## Frontend Sprint And Kanban UI
 
-- Add sprint edit flow.
-- Implement drag-and-drop task status changes.
 - Add sprint assignment/filtering polish to task flows.
+- Add project filtering for sprint lists if the number of projects/sprints grows.
 - Add board loading placeholders and optimistic status updates.
+
+## Frontend Project UI
+
+- Add project delete/archive UI once backend behavior is defined.
+- Add richer empty states that link users from Sprints to Projects when no project exists.
+- Add project-specific sprint counts and recently updated sprint summaries if useful.
 
 ## Frontend Tests
 
@@ -99,13 +117,17 @@ This file tracks the remaining implementation work based on the current reposito
   - Task list.
   - Task form.
   - Task filters.
+  - Project page.
+  - Project form.
   - Sprint board.
 - Add state/API tests for auth persistence and API error handling.
 - Add end-to-end tests for:
   - Register or login.
   - Create task.
   - Update task.
+  - Create project.
   - Create sprint.
+  - Verify a sprint cannot be created without a project.
   - View Kanban board.
 
 ## DevOps And Runtime
@@ -136,5 +158,7 @@ This file tracks the remaining implementation work based on the current reposito
 - Verify Swagger/OpenAPI output.
 - Verify full auth flow.
 - Verify task CRUD flow.
+- Verify project CRUD flow.
 - Verify sprint/Kanban flow.
+- Verify every sprint is linked to a project.
 - Verify Docker Compose full-stack startup.

@@ -7,6 +7,7 @@ import com.taskmanager.dto.SprintResponse;
 import com.taskmanager.dto.SprintStatsResponse;
 import com.taskmanager.dto.SprintUpdateRequest;
 import com.taskmanager.dto.TaskResponse;
+import com.taskmanager.entity.Project;
 import com.taskmanager.entity.Sprint;
 import com.taskmanager.entity.Task;
 import com.taskmanager.entity.User;
@@ -18,6 +19,7 @@ import com.taskmanager.exception.ResourceNotFoundException;
 import com.taskmanager.repository.SprintRepository;
 import com.taskmanager.repository.TaskRepository;
 import com.taskmanager.repository.UserRepository;
+import com.taskmanager.repository.ProjectRepository;
 import java.time.LocalDate;
 import java.util.EnumMap;
 import java.util.LinkedHashSet;
@@ -35,6 +37,7 @@ public class SprintService {
     private final SprintRepository sprintRepository;
     private final TaskRepository taskRepository;
     private final UserRepository userRepository;
+    private final ProjectRepository projectRepository;
 
     /**
      * Creates the sprint service with sprint, task, and user repositories needed for ownership and board queries.
@@ -42,11 +45,13 @@ public class SprintService {
     public SprintService(
             SprintRepository sprintRepository,
             TaskRepository taskRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            ProjectRepository projectRepository
     ) {
         this.sprintRepository = sprintRepository;
         this.taskRepository = taskRepository;
         this.userRepository = userRepository;
+        this.projectRepository = projectRepository;
     }
 
     /**
@@ -56,9 +61,11 @@ public class SprintService {
     public SprintResponse createSprint(SprintCreateRequest request, UUID userId) {
         validateDates(request.startDate(), request.endDate());
         User user = getUser(userId);
+        Project project = resolveProject(request.projectId(), userId);
 
         Sprint sprint = new Sprint();
         sprint.setUser(user);
+        sprint.setProject(project);
         sprint.setName(request.name());
         sprint.setDescription(request.description());
         sprint.setStartDate(request.startDate());
@@ -109,6 +116,9 @@ public class SprintService {
         }
         if (request.description() != null) {
             sprint.setDescription(request.description());
+        }
+        if (request.projectId() != null) {
+            sprint.setProject(resolveProject(request.projectId(), userId));
         }
         if (request.startDate() != null) {
             sprint.setStartDate(request.startDate());
@@ -220,6 +230,17 @@ public class SprintService {
         }
 
         return participants;
+    }
+
+    /**
+     * Resolves a required project id to a project owned by {@code userId}.
+     */
+    private Project resolveProject(UUID projectId, UUID userId) {
+        if (projectId == null) {
+            throw new AppException(HttpStatus.BAD_REQUEST, "PROJECT_REQUIRED", "Sprint project is required");
+        }
+        return projectRepository.findByIdAndUserId(projectId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
     }
 
     /**

@@ -4,7 +4,7 @@
 **Project Name:** Task Manager  
 **Start Date:** 2026-07-03  
 **Duration:** 8 weeks (4 sprints)  
-**Status:** Planning Phase
+**Status:** In Implementation
 
 ---
 
@@ -91,8 +91,10 @@ A complete Task Manager application built with **Spring Boot 3 backend** (Java 2
   - Acceptance Criteria: Toggle status between DONE and TODO; Audit timestamp updated; Front-end reflects change
 
 #### Sprint/Project Organization (Sprint 3)
+- **US-019:** User can create and manage projects
+  - Acceptance Criteria: Name required; description optional; projects are scoped to the authenticated owner; project list is available in the app.
 - **US-020:** User can create a sprint
-  - Acceptance Criteria: Name, description, start date, end date; Status defaults to PLANNING; Returns sprint ID
+  - Acceptance Criteria: Name, description, project, start date, end date; Status defaults to PLANNING; Returns sprint ID; sprint is linked to an owned project.
 - **US-021:** User can add tasks to a sprint
   - Acceptance Criteria: Assign existing task to sprint; Update task.sprint_id; Only user's own tasks can be added
 - **US-022:** User can view sprint board (Kanban)
@@ -180,11 +182,26 @@ CREATE TABLE users (
 CREATE INDEX idx_users_email ON users(email);
 ```
 
+#### projects Table
+```sql
+CREATE TABLE projects (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id),
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_projects_user_created ON projects(user_id, created_at);
+```
+
 #### sprints Table
 ```sql
 CREATE TABLE sprints (
   id UUID PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES users(id),
+  project_id UUID NOT NULL REFERENCES projects(id),
   name VARCHAR(255) NOT NULL,
   description TEXT,
   start_date DATE NOT NULL,
@@ -195,6 +212,7 @@ CREATE TABLE sprints (
 );
 
 CREATE INDEX idx_sprints_user_status ON sprints(user_id, status);
+CREATE INDEX idx_sprints_project_status ON sprints(project_id, status);
 ```
 
 #### tasks Table
@@ -208,6 +226,9 @@ CREATE TABLE tasks (
   status VARCHAR(50) DEFAULT 'TODO',
   priority VARCHAR(50) DEFAULT 'MEDIUM',
   assigned_to UUID REFERENCES users(id),
+  reviewer_id UUID REFERENCES users(id),
+  story_points INTEGER,
+  comments TEXT,
   due_date DATE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -215,6 +236,7 @@ CREATE TABLE tasks (
 
 CREATE INDEX idx_tasks_sprint_status ON tasks(sprint_id, status);
 CREATE INDEX idx_tasks_user_status ON tasks(user_id, status);
+CREATE INDEX idx_tasks_reviewer ON tasks(reviewer_id);
 CREATE INDEX idx_tasks_due_date ON tasks(due_date);
 ```
 
@@ -272,6 +294,14 @@ DELETE /api/tasks/{id}           â†’ Delete task
 PATCH  /api/tasks/{id}/status    â†’ Update task status only
 ```
 
+**ProjectController** (`/api/projects`)
+```
+GET    /api/projects              -> List user projects
+GET    /api/projects/{id}         -> Get project details
+POST   /api/projects              -> Create new project
+PUT    /api/projects/{id}         -> Update project
+```
+
 **SprintController** (`/api/sprints`)
 ```
 GET    /api/sprints              â†’ List all user sprints
@@ -307,17 +337,24 @@ GET    /api/sprints/{id}/stats   â†’ Get sprint statistics (completion %, v
 - Calculate task metrics (by priority, by status)
 
 **SprintService**
-- Create sprint with date validation
+- Create sprint with required project ownership validation and date validation
 - Update sprint (only if not yet completed)
 - Add/remove tasks from sprint
 - Calculate sprint statistics: completion percentage, velocity (completed tasks in sprint)
 - Mark sprint as completed/archived
+
+**ProjectService**
+- Create projects for the authenticated user
+- List owned projects
+- Update project name and description
+- Reject project access across users
 
 #### 4. Repository Layer (Spring Data JPA)
 **Location:** `src/main/java/com/taskmanager/repository/`
 
 - **UserRepository:** `findByEmail()`, `findByUsername()`, `existsByEmail()`, custom queries for user lookup
 - **TaskRepository:** `findAllByUserId()`, `findByIdAndUserId()` (permission check), `findBySprintIdAndStatus()`, `findByUserIdAndStatusAndPriority()`
+- **ProjectRepository:** `findAllByUserIdOrderByCreatedAtDesc()`, `findByIdAndUserId()`
 - **SprintRepository:** `findAllByUserId()`, `findByIdAndUserId()`, `findAllByUserIdAndStatus()`
 
 **Key Pattern:** Most queries filter by `user_id` to ensure users only see their own data.
@@ -326,8 +363,9 @@ GET    /api/sprints/{id}/stats   â†’ Get sprint statistics (completion %, v
 **Location:** `src/main/java/com/taskmanager/entity/`
 
 - **User:** id, username, email, passwordHash, fullName, avatarUrl, isActive, createdAt, updatedAt
-- **Sprint:** id, userId, name, description, startDate, endDate, status, createdAt, updatedAt
-- **Task:** id, sprintId, userId, title, description, status, priority, assignedTo, dueDate, createdAt, updatedAt
+- **Project:** id, userId, name, description, createdAt, updatedAt
+- **Sprint:** id, userId, projectId, name, description, startDate, endDate, status, createdAt, updatedAt
+- **Task:** id, sprintId, userId, title, description, comments, status, priority, assignedTo, reviewer, storyPoints, dueDate, createdAt, updatedAt
 
 **Annotations:**
 - @Entity, @Table
@@ -348,16 +386,21 @@ GET    /api/sprints/{id}/stats   â†’ Get sprint statistics (completion %, v
 - `RefreshTokenRequest`: refreshToken
 
 **Task DTOs**
-- `TaskCreateRequest`: title, description, priority, dueDate, sprintId (added in Sprint 3)
-- `TaskUpdateRequest`: title, description, priority, dueDate, sprintId (added in Sprint 3)
-- `TaskResponse`: id, title, description, status, priority, dueDate, sprintId, createdAt, updatedAt
+- `TaskCreateRequest`: title, description, comments, priority, dueDate, sprintId, assignedToId, reviewerId, storyPoints
+- `TaskUpdateRequest`: title, description, comments, status, priority, dueDate, sprintId, assignedToId, reviewerId, storyPoints
+- `TaskResponse`: id, userId, sprintId, assignedToId, reviewerId, projectId, sprintName, projectName, title, description, comments, status, priority, storyPoints, dueDate, createdAt, updatedAt
 - `TaskListResponse`: tasks (paginated), totalCount, currentPage, pageSize
 
 **Sprint DTOs**
-- `SprintCreateRequest`: name, description, startDate, endDate
-- `SprintResponse`: id, name, status, startDate, endDate, taskCount
+- `SprintCreateRequest`: name, description, projectId, startDate, endDate
+- `SprintResponse`: id, projectId, projectName, name, status, startDate, endDate, taskCount
 - `SprintBoardResponse`: sprintId, tasks grouped by status (TODO[], IN_PROGRESS[], DONE[])
 - `SprintStatsResponse`: completionPercentage, velocity, tasksByPriority
+
+**Project DTOs**
+- `ProjectCreateRequest`: name, description
+- `ProjectUpdateRequest`: name, description
+- `ProjectResponse`: id, userId, name, description, sprintCount, createdAt, updatedAt
 
 **Generic DTOs**
 - `ApiResponse<T>`: success, data, message, timestamp
@@ -558,6 +601,16 @@ CREATE INDEX idx_tasks_user_status ON tasks(user_id, status);
 CREATE INDEX idx_tasks_due_date ON tasks(due_date);
 ```
 
+### V10__Add_task_review_metadata.sql
+```sql
+ALTER TABLE tasks
+  ADD COLUMN reviewer_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  ADD COLUMN story_points INTEGER CHECK (story_points IS NULL OR story_points >= 0),
+  ADD COLUMN comments TEXT;
+
+CREATE INDEX idx_tasks_reviewer ON tasks(reviewer_id);
+```
+
 ### V3__Create_sprints_table.sql
 ```sql
 CREATE TABLE sprints (
@@ -581,6 +634,24 @@ ALTER TABLE tasks
   ADD COLUMN sprint_id UUID REFERENCES sprints(id) ON DELETE SET NULL;
 
 CREATE INDEX idx_tasks_sprint_status ON tasks(sprint_id, status);
+```
+
+### V9__Create_projects_and_link_sprints.sql
+```sql
+CREATE TABLE projects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE sprints
+  ADD COLUMN project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE;
+
+CREATE INDEX idx_projects_user_created ON projects(user_id, created_at);
+CREATE INDEX idx_sprints_project_status ON sprints(project_id, status);
 ```
 
 ### V5__Create_audit_logs_table.sql
@@ -717,9 +788,10 @@ CREATE INDEX idx_tasks_created_at ON tasks(created_at);
 
 ### Sprint 3: Sprint/Kanban Board (Weeks 5-6)
 
-**Sprint Goal:** Implement sprint organization with Kanban board view and drag-and-drop functionality.
+**Sprint Goal:** Implement project organization, project-linked sprints, Kanban board view, and drag-and-drop functionality.
 
 **User Stories:**
+- US-019: Create and manage projects
 - US-020: Create a sprint
 - US-021: Add tasks to sprint
 - US-022: View sprint board (Kanban)
@@ -727,18 +799,18 @@ CREATE INDEX idx_tasks_created_at ON tasks(created_at);
 - US-024: View sprint statistics
 
 **Technical Tasks:**
-1. Create Sprint entity and SprintStatus enum
+1. Create Project and Sprint entities and SprintStatus enum
 2. Create database schema (V3__Create_sprints_table.sql)
 3. Add sprint assignment migration (V4__Add_sprint_to_tasks.sql)
-4. Implement SprintRepository with queries
-5. Implement SprintService with calculations
-6. Create SprintController with CRUD endpoints
+4. Implement ProjectRepository and SprintRepository with ownership/access queries
+5. Implement ProjectService and SprintService with calculations
+6. Create ProjectController and SprintController with CRUD endpoints
 7. Implement sprint statistics calculation (completion %, velocity)
 8. Create SprintBoardResponse DTO (tasks grouped by status)
-9. Add request/response DTOs: SprintCreateRequest, SprintResponse, SprintStatsResponse
+9. Add request/response DTOs: ProjectCreateRequest, ProjectResponse, SprintCreateRequest, SprintResponse, SprintStatsResponse
 10. Write unit tests for SprintService (75%+ coverage)
 11. Write integration tests for SprintController
-12. Create SprintForm component for create/edit
+12. Create Project page and SprintForm component for create/edit
 13. Create SprintBoard component with Kanban layout
 14. Implement drag-and-drop using dnd-kit
 15. Create TaskCard component (draggable within board)
@@ -752,7 +824,8 @@ CREATE INDEX idx_tasks_created_at ON tasks(created_at);
 23. Implement responsive Kanban (mobile scrollable columns)
 
 **Acceptance Criteria:**
-- POST /api/sprints creates sprint
+- POST /api/projects creates project
+- POST /api/sprints creates sprint only when `projectId` references an owned project
 - GET /api/sprints returns user sprints
 - GET /api/sprints/{id}/tasks returns Kanban board data
 - GET /api/sprints/{id}/stats returns sprint statistics
@@ -1007,6 +1080,13 @@ volumes:
     "status": "TODO",
     "priority": "HIGH",
     "sprintId": null,
+    "assignedToId": null,
+    "reviewerId": null,
+    "projectId": null,
+    "sprintName": null,
+    "projectName": null,
+    "storyPoints": 3,
+    "comments": "Needs backend and frontend review",
     "dueDate": "2026-07-10",
     "createdAt": "2026-07-03T10:30:00Z",
     "updatedAt": "2026-07-03T10:30:00Z"
@@ -1063,11 +1143,14 @@ volumes:
 - [ ] Tests passing (75%+ coverage)
 
 ### Sprint 3 (Sprints/Kanban)
-- [ ] Sprint creation endpoint
-- [ ] Kanban board displays 3 columns
+- [x] Project creation endpoint
+- [x] Project creation/editing UI
+- [x] Sprint creation endpoint
+- [x] Sprints require project linkage
+- [x] Kanban board displays 3 columns
 - [ ] Drag-and-drop updates status
-- [ ] Sprint statistics calculated correctly
-- [ ] Sprint statistics displayed on UI
+- [x] Sprint statistics calculated correctly
+- [x] Sprint statistics displayed on UI
 - [ ] Responsive on mobile devices
 - [ ] Tests passing (75%+ coverage)
 
@@ -1198,6 +1281,6 @@ Week 7-8: Sprint 4 (DevOps & Production)
 
 ---
 
-**Document Last Updated:** 2026-07-03  
-**Version:** 1.0 (Planning Phase)  
-**Status:** Ready for Implementation
+**Document Last Updated:** 2026-07-06  
+**Version:** 1.1 (Implementation Snapshot)  
+**Status:** Implementation in progress
