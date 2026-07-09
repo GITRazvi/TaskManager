@@ -1,3 +1,4 @@
+// File responsibility: Boots the React app with routing and React Query providers.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import ReactDOM from "react-dom/client";

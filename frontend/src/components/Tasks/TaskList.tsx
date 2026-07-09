@@ -1,3 +1,4 @@
+// File responsibility: Renders the filterable task list, task actions, and task detail modal.
 import { useMemo, useState } from "react";
 import { getApiErrorMessage } from "../../api/client";
 import { useTasks, useUpdateTaskStatus } from "../../hooks/useTasks";
@@ -7,10 +8,14 @@ import { TaskCard } from "./TaskCard";
 import { TaskDetails } from "./TaskDetails";
 import { TaskFilters } from "./TaskFilters";
 
+/**
+ * Renders a paginated task list with filters, task actions, and detail/edit modals.
+ * sprints and users store selector context; assignedToId stores an optional forced assignee filter.
+ */
 export function TaskList({ sprints, users, assignedToId }: { sprints: Sprint[]; users: User[]; assignedToId?: string }) {
   const [filters, setFilters] = useState<Filters>({ page: 0, size: 20 });
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const tasks = useTasks({ ...filters, assignedToId }, { enabled: Boolean(assignedToId) });
+  const tasks = useTasks({ ...filters, assignedToId }, { enabled: assignedToId === undefined || Boolean(assignedToId) });
   const updateStatus = useUpdateTaskStatus();
   const usersById = useMemo(() => {
     const nextUsersById = new Map(users.map((user) => [user.id, user]));

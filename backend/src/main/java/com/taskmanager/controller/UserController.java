@@ -3,7 +3,9 @@ package com.taskmanager.controller;
 
 import com.taskmanager.dto.ApiResponse;
 import com.taskmanager.dto.ChangePasswordRequest;
+import com.taskmanager.dto.CreateUserRequest;
 import com.taskmanager.dto.UpdateUserRequest;
+import com.taskmanager.dto.UpdateUserRoleRequest;
 import com.taskmanager.dto.UserResponse;
 import com.taskmanager.security.UserPrincipal;
 import com.taskmanager.service.UserService;
@@ -14,6 +16,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -39,6 +43,20 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success(
                 userService.getActiveUsers(),
                 "Users retrieved successfully"
+        ));
+    }
+
+    /**
+     * Creates a user with an explicit role; only administrators are authorized by the service.
+     */
+    @PostMapping
+    public ResponseEntity<ApiResponse<UserResponse>> createUser(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody CreateUserRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(
+                userService.createUser(request, principal.getRole()),
+                "User created successfully"
         ));
     }
 
@@ -69,6 +87,33 @@ public class UserController {
                 userService.updateProfile(id, principal.getId(), request),
                 "User profile updated successfully"
         ));
+    }
+
+    /**
+     * Updates a user's role; only administrators are authorized by the service.
+     */
+    @PutMapping("/{id}/role")
+    public ResponseEntity<ApiResponse<UserResponse>> updateRole(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody UpdateUserRoleRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(
+                userService.updateRole(id, principal.getId(), principal.getRole(), request),
+                "User role updated successfully"
+        ));
+    }
+
+    /**
+     * Soft-deletes a user; only administrators are authorized by the service.
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteUser(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal principal
+    ) {
+        userService.deleteUser(id, principal.getId(), principal.getRole());
+        return ResponseEntity.ok(ApiResponse.success(null, "User deleted successfully"));
     }
 
     /**

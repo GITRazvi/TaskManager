@@ -1,6 +1,8 @@
-export type TaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
+// File responsibility: Defines shared frontend domain types and API payload contracts.
+export type TaskStatus = "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export type SprintStatus = "PLANNING" | "ACTIVE" | "COMPLETED" | "ARCHIVED";
+export type UserRole = "ADMIN" | "PROJECT_MANAGER" | "DEVELOPER";
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -16,6 +18,7 @@ export interface User {
   email: string;
   fullName?: string | null;
   avatarUrl?: string | null;
+  role: UserRole;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -41,6 +44,14 @@ export interface RegisterRequest {
   fullName?: string;
 }
 
+export interface UserCreateRequest extends RegisterRequest {
+  role: UserRole;
+}
+
+export interface UserRoleUpdateRequest {
+  role: UserRole;
+}
+
 export interface Task {
   id: string;
   userId: string;
@@ -53,6 +64,7 @@ export interface Task {
   title: string;
   description?: string | null;
   comments: TaskComment[];
+  statusHistory: TaskStatusHistory[];
   status: TaskStatus;
   priority?: TaskPriority | null;
   storyPoints?: number | null;
@@ -76,12 +88,36 @@ export interface TaskComment {
   updatedAt: string;
 }
 
+export interface TaskStatusHistory {
+  id?: string | null;
+  taskId: string;
+  fromStatus?: TaskStatus | null;
+  toStatus: TaskStatus;
+  changedById?: string | null;
+  changedByName?: string | null;
+  createdAt: string;
+}
+
 export interface TaskListResponse {
   tasks: Task[];
   page: number;
   size: number;
   totalElements: number;
   totalPages: number;
+}
+
+export interface TaskStatsResponse {
+  projectId: string;
+  projectName: string;
+  totalTasks: number;
+  completedTasks: number;
+  completionPercentage: number;
+  completedStoryPoints: number;
+  remainingStoryPoints: number;
+  totalStoryPoints: number;
+  overdueTasks: number;
+  tasksByStatus: Partial<Record<TaskStatus, number>>;
+  tasksByPriority: Partial<Record<TaskPriority, number>>;
 }
 
 export interface TaskFilters {
@@ -163,6 +199,7 @@ export interface SprintBoardResponse {
   sprintId: string;
   todo: Task[];
   inProgress: Task[];
+  review: Task[];
   done: Task[];
 }
 
@@ -172,5 +209,9 @@ export interface SprintStatsResponse {
   completedTasks: number;
   completionPercentage: number;
   velocity: number;
+  completedStoryPoints: number;
+  remainingStoryPoints: number;
+  totalStoryPoints: number;
+  overdueTasks: number;
   tasksByPriority: Partial<Record<TaskPriority, number>>;
 }

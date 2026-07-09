@@ -1,6 +1,7 @@
+// File responsibility: Renders and validates the sprint creation and edit form.
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Save } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { getApiErrorMessage } from "../../api/client";
@@ -18,6 +19,10 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+/**
+ * Renders sprint create/edit fields and submits validated sprint data.
+ * sprint stores edit defaults; projects/users store selectors; onSaved notifies the parent after mutation success.
+ */
 export function SprintForm({
   projects,
   users,
@@ -34,6 +39,24 @@ export function SprintForm({
   const createSprint = useCreateSprint();
   const updateSprint = useUpdateSprint();
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const projectOptions = useMemo(() => {
+    if (!editingSprint || projects.some((project) => project.id === editingSprint.projectId)) {
+      return projects;
+    }
+
+    return [
+      {
+        id: editingSprint.projectId,
+        userId: editingSprint.userId,
+        name: editingSprint.projectName,
+        description: null,
+        sprintCount: 0,
+        createdAt: "",
+        updatedAt: ""
+      },
+      ...projects
+    ];
+  }, [editingSprint, projects]);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -140,14 +163,14 @@ export function SprintForm({
           <option value="" disabled>
             Select project
           </option>
-          {projects.map((project) => (
+          {projectOptions.map((project) => (
             <option key={project.id} value={project.id}>
               {project.name}
             </option>
           ))}
         </select>
         {form.formState.errors.projectId && <small>{form.formState.errors.projectId.message}</small>}
-        {projects.length === 0 && <small>Create a project before adding sprints.</small>}
+        {projectOptions.length === 0 && <small>Create a project before adding sprints.</small>}
       </label>
       <div className="form-grid">
         <label>
@@ -194,7 +217,7 @@ export function SprintForm({
         </div>
       </label>
       {errorMessage && <p className="form-error">{errorMessage}</p>}
-      <button className="primary-button" type="submit" disabled={isSaving || projects.length === 0}>
+      <button className="primary-button" type="submit" disabled={isSaving || projectOptions.length === 0}>
         {editingSprint ? <Save aria-hidden="true" /> : <Plus aria-hidden="true" />}
         {isSaving ? "Saving" : editingSprint ? "Save sprint" : "Create sprint"}
       </button>

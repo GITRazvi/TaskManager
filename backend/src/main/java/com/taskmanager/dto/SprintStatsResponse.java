@@ -11,6 +11,10 @@ public record SprintStatsResponse(
         long completedTasks,
         double completionPercentage,
         long velocity,
+        long completedStoryPoints,
+        long remainingStoryPoints,
+        long totalStoryPoints,
+        long overdueTasks,
         Map<TaskPriority, Long> tasksByPriority
 ) {
 }

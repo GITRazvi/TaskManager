@@ -3,6 +3,7 @@ package com.taskmanager.exception;
 
 import com.taskmanager.dto.ApiResponse;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -70,6 +71,16 @@ public class GlobalExceptionHandler {
                         "VALIDATION_ERROR",
                         exception.getName() + ": invalid value"
                 ));
+    }
+
+    /**
+     * Converts unsupported content types into a client error instead of a generic server error.
+     */
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiResponse<Void>> handleUnsupportedMediaType(HttpMediaTypeNotSupportedException exception) {
+        return ResponseEntity
+                .status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .body(ApiResponse.failure("UNSUPPORTED_MEDIA_TYPE", "Content type is not supported"));
     }
 
     /**

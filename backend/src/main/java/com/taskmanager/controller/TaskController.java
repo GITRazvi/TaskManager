@@ -8,6 +8,7 @@ import com.taskmanager.dto.TaskCommentResponse;
 import com.taskmanager.dto.TaskCreateRequest;
 import com.taskmanager.dto.TaskListResponse;
 import com.taskmanager.dto.TaskResponse;
+import com.taskmanager.dto.TaskStatsResponse;
 import com.taskmanager.dto.TaskStatusUpdateRequest;
 import com.taskmanager.dto.TaskUpdateRequest;
 import com.taskmanager.entity.enums.TaskPriority;
@@ -16,6 +17,7 @@ import com.taskmanager.security.UserPrincipal;
 import com.taskmanager.service.TaskService;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ContentDisposition;
@@ -76,6 +78,19 @@ public class TaskController {
     }
 
     /**
+     * Returns aggregate task metrics across all tasks visible to the authenticated user.
+     */
+    @GetMapping("/stats")
+    public ResponseEntity<ApiResponse<List<TaskStatsResponse>>> getTaskStats(
+            @AuthenticationPrincipal UserPrincipal principal
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(
+                taskService.getTaskStats(principal.getId()),
+                "Task statistics retrieved successfully"
+        ));
+    }
+
+    /**
      * Retrieves a single task by {@code id}, scoped to the authenticated user's principal id.
      */
     @GetMapping("/{id}")
@@ -100,7 +115,7 @@ public class TaskController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.success(
-                        taskService.createTask(request, principal.getId()),
+                        taskService.createTask(request, principal.getId(), principal.getRole()),
                         "Task created successfully"
                 ));
     }
@@ -115,7 +130,7 @@ public class TaskController {
             @Valid @RequestBody TaskUpdateRequest request
     ) {
         return ResponseEntity.ok(ApiResponse.success(
-                taskService.updateTask(id, principal.getId(), request),
+                taskService.updateTask(id, principal.getId(), principal.getRole(), request),
                 "Task updated successfully"
         ));
     }
@@ -187,7 +202,7 @@ public class TaskController {
             @PathVariable UUID id,
             @AuthenticationPrincipal UserPrincipal principal
     ) {
-        taskService.deleteTask(id, principal.getId());
+        taskService.deleteTask(id, principal.getId(), principal.getRole());
         return ResponseEntity.noContent().build();
     }
 

@@ -14,7 +14,9 @@ import com.taskmanager.entity.User;
 import com.taskmanager.entity.enums.SprintStatus;
 import com.taskmanager.entity.enums.TaskPriority;
 import com.taskmanager.entity.enums.TaskStatus;
+import com.taskmanager.entity.enums.UserRole;
 import com.taskmanager.exception.AppException;
+import com.taskmanager.exception.ForbiddenException;
 import com.taskmanager.exception.ResourceNotFoundException;
 import com.taskmanager.repository.SprintRepository;
 import com.taskmanager.repository.TaskRepository;
@@ -58,7 +60,8 @@ public class SprintService {
      * Creates a planning sprint for {@code userId} after validating the request start and end dates.
      */
     @Transactional
-    public SprintResponse createSprint(SprintCreateRequest request, UUID userId) {
+    public SprintResponse createSprint(SprintCreateRequest request, UUID userId, UserRole userRole) {
+        ensureCanManageSprints(userRole);
         validateDates(request.startDate(), request.endDate());
         User user = getUser(userId);
         Project project = resolveProject(request.projectId(), userId);
@@ -102,8 +105,9 @@ public class SprintService {
      * Updates mutable sprint fields, using existing dates when request dates are null before validating the range.
      */
     @Transactional
-    public SprintResponse updateSprint(UUID sprintId, UUID userId, SprintUpdateRequest request) {
-        Sprint sprint = getOwnedSprint(sprintId, userId);
+    public SprintResponse updateSprint(UUID sprintId, UUID userId, UserRole userRole, SprintUpdateRequest request) {
+        ensureCanManageSprints(userRole);
+        Sprint sprint = getAccessibleSprint(sprintId, userId);
         LocalDate startDate = request.startDate() == null ? sprint.getStartDate() : request.startDate();
         LocalDate endDate = request.endDate() == null ? sprint.getEndDate() : request.endDate();
         validateDates(startDate, endDate);
@@ -118,7 +122,7 @@ public class SprintService {
             sprint.setDescription(request.description());
         }
         if (request.projectId() != null) {
-            sprint.setProject(resolveProject(request.projectId(), userId));
+            sprint.setProject(resolveProject(request.projectId(), sprint.getUser().getId()));
         }
         if (request.startDate() != null) {
             sprint.setStartDate(request.startDate());
@@ -150,6 +154,7 @@ public class SprintService {
                 sprintId,
                 tasksByStatus.getOrDefault(TaskStatus.TODO, List.of()),
                 tasksByStatus.getOrDefault(TaskStatus.IN_PROGRESS, List.of()),
+                tasksByStatus.getOrDefault(TaskStatus.REVIEW, List.of()),
                 tasksByStatus.getOrDefault(TaskStatus.DONE, List.of())
         );
     }
@@ -166,6 +171,19 @@ public class SprintService {
                 .filter(task -> task.getStatus() == TaskStatus.DONE)
                 .count();
         double completionPercentage = totalTasks == 0 ? 0 : (completedTasks * 100.0) / totalTasks;
+        LocalDate today = LocalDate.now();
+        long completedStoryPoints = tasks.stream()
+                .filter(task -> task.getStatus() == TaskStatus.DONE)
+                .mapToLong(task -> task.getStoryPoints() == null ? 0 : task.getStoryPoints())
+                .sum();
+        long remainingStoryPoints = tasks.stream()
+                .filter(task -> task.getStatus() != TaskStatus.DONE)
+                .mapToLong(task -> task.getStoryPoints() == null ? 0 : task.getStoryPoints())
+                .sum();
+        long overdueTasks = tasks.stream()
+                .filter(task -> task.getStatus() != TaskStatus.DONE)
+                .filter(task -> task.getDueDate() != null && task.getDueDate().isBefore(today))
+                .count();
 
         Map<TaskPriority, Long> tasksByPriority = tasks.stream()
                 .collect(Collectors.groupingBy(Task::getPriority, () -> new EnumMap<>(TaskPriority.class), Collectors.counting()));
@@ -176,6 +194,10 @@ public class SprintService {
                 completedTasks,
                 completionPercentage,
                 completedTasks,
+                completedStoryPoints,
+                remainingStoryPoints,
+                completedStoryPoints + remainingStoryPoints,
+                overdueTasks,
                 tasksByPriority
         );
     }
@@ -184,7 +206,8 @@ public class SprintService {
      * Deletes a sprint owned by {@code userId}; linked tasks are detached by the database foreign-key rule.
      */
     @Transactional
-    public void deleteSprint(UUID sprintId, UUID userId) {
+    public void deleteSprint(UUID sprintId, UUID userId, UserRole userRole) {
+        ensureCanManageSprints(userRole);
         sprintRepository.delete(getOwnedSprint(sprintId, userId));
     }
 
@@ -261,6 +284,12 @@ public class SprintService {
         }
         if (!endDate.isAfter(startDate)) {
             throw new AppException(HttpStatus.BAD_REQUEST, "INVALID_SPRINT_DATES", "Sprint end date must be after start date");
+        }
+    }
+
+    private void ensureCanManageSprints(UserRole role) {
+        if (!role.canManageSprints()) {
+            throw new ForbiddenException("Only admins and project managers can manage sprints");
         }
     }
 }

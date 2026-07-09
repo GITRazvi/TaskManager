@@ -1,7 +1,12 @@
+// File responsibility: Provides React Query hooks and cache invalidation for task workflows, comments, and metrics.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as tasksApi from "../api/tasks";
 import type { TaskCommentCreateRequest, TaskCreateRequest, TaskFilters, TaskStatus, TaskUpdateRequest } from "../types";
 
+/**
+ * Fetches task pages and keeps prior results while filters change.
+ * filters stores query params; options.enabled lets callers delay the request.
+ */
 export function useTasks(filters: TaskFilters, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["tasks", filters],
@@ -11,6 +16,19 @@ export function useTasks(filters: TaskFilters, options?: { enabled?: boolean }) 
   });
 }
 
+/**
+ * Fetches project-wide dashboard metrics for visible projects.
+ */
+export function useTaskStats() {
+  return useQuery({
+    queryKey: ["task-stats"],
+    queryFn: tasksApi.getTaskStats
+  });
+}
+
+/**
+ * Creates tasks and refreshes task, dashboard, sprint, board, and sprint metric caches.
+ */
 export function useCreateTask() {
   const queryClient = useQueryClient();
 
@@ -18,6 +36,7 @@ export function useCreateTask() {
     mutationFn: (payload: TaskCreateRequest) => tasksApi.createTask(payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      void queryClient.invalidateQueries({ queryKey: ["task-stats"] });
       void queryClient.invalidateQueries({ queryKey: ["sprints"] });
       void queryClient.invalidateQueries({ queryKey: ["sprint-board"] });
       void queryClient.invalidateQueries({ queryKey: ["sprint-stats"] });
@@ -25,6 +44,10 @@ export function useCreateTask() {
   });
 }
 
+/**
+ * Updates task details.
+ * The mutation input stores the task id and a partial payload with the changed fields.
+ */
 export function useUpdateTask() {
   const queryClient = useQueryClient();
 
@@ -33,12 +56,17 @@ export function useUpdateTask() {
       tasksApi.updateTask(id, payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      void queryClient.invalidateQueries({ queryKey: ["task-stats"] });
       void queryClient.invalidateQueries({ queryKey: ["sprint-board"] });
       void queryClient.invalidateQueries({ queryKey: ["sprint-stats"] });
     }
   });
 }
 
+/**
+ * Moves a task to a new workflow status.
+ * The mutation input stores the task id and target status value.
+ */
 export function useUpdateTaskStatus() {
   const queryClient = useQueryClient();
 
@@ -47,12 +75,17 @@ export function useUpdateTaskStatus() {
       tasksApi.updateTaskStatus(id, status),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      void queryClient.invalidateQueries({ queryKey: ["task-stats"] });
       void queryClient.invalidateQueries({ queryKey: ["sprint-board"] });
       void queryClient.invalidateQueries({ queryKey: ["sprint-stats"] });
     }
   });
 }
 
+/**
+ * Adds task comments and refreshes views that display comments or task aggregates.
+ * The mutation input stores the task id and comment payload.
+ */
 export function useAddTaskComment() {
   const queryClient = useQueryClient();
 
@@ -61,11 +94,16 @@ export function useAddTaskComment() {
       tasksApi.addTaskComment(id, payload),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      void queryClient.invalidateQueries({ queryKey: ["task-stats"] });
       void queryClient.invalidateQueries({ queryKey: ["sprint-board"] });
     }
   });
 }
 
+/**
+ * Downloads a comment attachment on demand.
+ * The mutation input stores both task id and comment id for the backend route.
+ */
 export function useDownloadTaskCommentAttachment() {
   return useMutation({
     mutationFn: ({ taskId, commentId }: { taskId: string; commentId: string }) =>
@@ -73,6 +111,9 @@ export function useDownloadTaskCommentAttachment() {
   });
 }
 
+/**
+ * Deletes a task and refreshes all task and sprint caches affected by removal.
+ */
 export function useDeleteTask() {
   const queryClient = useQueryClient();
 
@@ -80,6 +121,7 @@ export function useDeleteTask() {
     mutationFn: tasksApi.deleteTask,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      void queryClient.invalidateQueries({ queryKey: ["task-stats"] });
       void queryClient.invalidateQueries({ queryKey: ["sprints"] });
       void queryClient.invalidateQueries({ queryKey: ["sprint-board"] });
       void queryClient.invalidateQueries({ queryKey: ["sprint-stats"] });

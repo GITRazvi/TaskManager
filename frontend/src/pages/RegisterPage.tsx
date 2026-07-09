@@ -1,7 +1,11 @@
+// File responsibility: Renders the registration page around the registration form.
 import { CheckSquare } from "lucide-react";
 import { RegisterForm } from "../components/Auth/RegisterForm";
 import { ThemeToggle } from "../components/Common/ThemeToggle";
 
+/**
+ * Renders the account registration screen.
+ */
 export function RegisterPage() {
   return (
     <main className="auth-page">

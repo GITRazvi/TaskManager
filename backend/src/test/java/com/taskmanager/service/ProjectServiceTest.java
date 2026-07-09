@@ -11,7 +11,9 @@ import com.taskmanager.dto.ProjectCreateRequest;
 import com.taskmanager.dto.ProjectUpdateRequest;
 import com.taskmanager.entity.Project;
 import com.taskmanager.entity.User;
+import com.taskmanager.entity.enums.UserRole;
 import com.taskmanager.exception.AppException;
+import com.taskmanager.exception.ForbiddenException;
 import com.taskmanager.repository.ProjectRepository;
 import com.taskmanager.repository.UserRepository;
 import java.util.Optional;
@@ -50,7 +52,7 @@ class ProjectServiceTest {
             return project;
         });
 
-        var response = projectService.createProject(request, userId);
+        var response = projectService.createProject(request, userId, UserRole.PROJECT_MANAGER);
 
         assertThat(response.userId()).isEqualTo(userId);
         assertThat(response.name()).isEqualTo("Roadmap");
@@ -71,11 +73,27 @@ class ProjectServiceTest {
         project.setName("Roadmap");
         when(projectRepository.findByIdAndUserId(projectId, userId)).thenReturn(Optional.of(project));
 
-        assertThatThrownBy(() -> projectService.updateProject(projectId, userId, new ProjectUpdateRequest(" ", null)))
+        assertThatThrownBy(() -> projectService.updateProject(
+                projectId,
+                userId,
+                UserRole.PROJECT_MANAGER,
+                new ProjectUpdateRequest(" ", null)
+        ))
                 .isInstanceOf(AppException.class)
                 .hasMessage("Project name cannot be blank")
                 .extracting("errorCode")
                 .isEqualTo("INVALID_PROJECT_NAME");
+    }
+
+    @Test
+    void createProjectRejectsDeveloper() {
+        assertThatThrownBy(() -> projectService.createProject(
+                new ProjectCreateRequest("Roadmap", null),
+                UUID.randomUUID(),
+                UserRole.DEVELOPER
+        ))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessage("Only admins and project managers can manage projects");
     }
 
     private static User activeUser(UUID userId) {

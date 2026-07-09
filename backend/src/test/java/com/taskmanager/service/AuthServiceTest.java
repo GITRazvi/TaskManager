@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.taskmanager.dto.LoginRequest;
 import com.taskmanager.dto.RegisterRequest;
 import com.taskmanager.entity.User;
+import com.taskmanager.entity.enums.UserRole;
 import com.taskmanager.exception.AppException;
 import com.taskmanager.exception.UnauthorizedException;
 import com.taskmanager.repository.UserRepository;
@@ -72,6 +73,7 @@ class AuthServiceTest {
         assertThat(response.tokenType()).isEqualTo("Bearer");
         assertThat(response.expiresIn()).isEqualTo(900000L);
         assertThat(response.user().email()).isEqualTo(request.email());
+        assertThat(response.user().role()).isEqualTo(UserRole.DEVELOPER);
         assertThat(response.user().active()).isTrue();
         assertThat(jwtTokenProvider.isValid(response.accessToken())).isTrue();
         assertThat(jwtTokenProvider.getTokenType(response.accessToken())).isEqualTo("access");
@@ -85,6 +87,7 @@ class AuthServiceTest {
         assertThat(savedUser.getEmail()).isEqualTo(request.email());
         assertThat(savedUser.getPasswordHash()).isEqualTo("encoded-password");
         assertThat(savedUser.getFullName()).isEqualTo(request.fullName());
+        assertThat(savedUser.getRole()).isEqualTo(UserRole.DEVELOPER);
         assertThat(savedUser.isActive()).isTrue();
     }
 

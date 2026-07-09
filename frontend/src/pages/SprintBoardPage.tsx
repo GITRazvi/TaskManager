@@ -1,3 +1,4 @@
+// File responsibility: Renders sprint selection, sprint CRUD controls, sprint metrics, and the selected sprint board.
 import { useEffect, useMemo, useState } from "react";
 import { Pencil, Plus, Trash2, X } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
@@ -10,9 +11,14 @@ import { useProjects } from "../hooks/useProjects";
 import { useDeleteSprint, useSprints } from "../hooks/useSprints";
 import { useUsers } from "../hooks/useUsers";
 import { useAuthStore } from "../store/authStore";
+import { canManageSprints } from "../utils/permissions";
 
 type PanelMode = "sprint" | "edit" | "task" | null;
 
+/**
+ * Coordinates sprint selection, sprint management panels, sprint metrics, and the selected sprint board.
+ * selectedSprintId stores the active sprint UUID; activePanel stores which creation/edit panel is open.
+ */
 export function SprintBoardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const sprints = useSprints();
@@ -20,6 +26,7 @@ export function SprintBoardPage() {
   const deleteSprint = useDeleteSprint();
   const users = useUsers();
   const currentUser = useAuthStore((state) => state.user);
+  const canManageSprint = canManageSprints(currentUser);
   const initialSprintId = searchParams.get("sprint") ?? undefined;
   const [selectedSprintId, setSelectedSprintId] = useState<string | undefined>(initialSprintId);
   const [activePanel, setActivePanel] = useState<PanelMode>(initialSprintId ? null : "sprint");
@@ -29,6 +36,7 @@ export function SprintBoardPage() {
     [selectedSprintId, sprints.data]
   );
   const isSprintOwner = Boolean(selectedSprint && currentUser?.id === selectedSprint.userId);
+  const canDeleteSelectedSprint = canManageSprint && isSprintOwner;
 
   useEffect(() => {
     if (!sprints.data || sprints.isFetching || activePanel === "sprint") {
@@ -36,16 +44,20 @@ export function SprintBoardPage() {
     }
 
     const selectedExists = sprints.data.some((sprint) => sprint.id === selectedSprintId);
+    if (selectedExists) {
+      return;
+    }
+
     if (!selectedExists && sprints.data.length) {
       setSelectedSprintId(sprints.data[0].id);
       setSearchParams({ sprint: sprints.data[0].id });
     }
   }, [activePanel, selectedSprintId, setSearchParams, sprints.data, sprints.isFetching]);
 
-  const updateSelectedSprint = (id: string) => {
+  const updateSelectedSprint = (id?: string) => {
     setActivePanel(null);
     setSelectedSprintId(id);
-    setSearchParams({ sprint: id });
+    setSearchParams(id ? { sprint: id } : {});
   };
 
   const startNewSprint = () => {
@@ -109,7 +121,7 @@ export function SprintBoardPage() {
             <Plus aria-hidden="true" />
             Create sprint
           </button>
-          {isSprintOwner && (
+          {canDeleteSelectedSprint && (
             <button
               className="secondary-button danger"
               type="button"
@@ -148,9 +160,9 @@ export function SprintBoardPage() {
               <button
                 className="icon-button"
                 type="button"
-                disabled={!isSprintOwner}
+                disabled={!selectedSprint}
                 onClick={() => {
-                  if (isSprintOwner) {
+                  if (selectedSprint) {
                     setActivePanel("edit");
                   }
                 }}

@@ -1,15 +1,13 @@
+// File responsibility: Renders a compact clickable task summary card.
 import { CalendarDays, Check, Circle, Pencil, Trash2, UserRound } from "lucide-react";
 import type { DragEventHandler, KeyboardEventHandler, MouseEventHandler } from "react";
 import type { Task, TaskStatus, User } from "../../types";
+import { taskStatusLabels, taskStatusOptions } from "../../utils/taskStatus";
 
-const statusOptions: TaskStatus[] = ["TODO", "IN_PROGRESS", "DONE"];
-
-const statusLabels: Record<TaskStatus, string> = {
-  TODO: "To do",
-  IN_PROGRESS: "In progress",
-  DONE: "Done"
-};
-
+/**
+ * Renders one task summary with drag, open, edit, delete, and status-change callbacks.
+ * task stores the card data; assignee stores display identity; callbacks pass user actions back to the parent board/list.
+ */
 export function TaskCard({
   task,
   assignee,
@@ -76,7 +74,7 @@ export function TaskCard({
       <div className="task-meta">
         <span>
           <Circle aria-hidden="true" />
-          {statusLabels[task.status]}
+          {taskStatusLabels[task.status]}
         </span>
         {task.dueDate && (
           <span>
@@ -97,9 +95,9 @@ export function TaskCard({
           value={task.status}
           onChange={(event) => onStatusChange(event.target.value as TaskStatus)}
         >
-          {statusOptions.map((status) => (
+          {taskStatusOptions.map((status) => (
             <option key={status} value={status}>
-              {statusLabels[status]}
+              {taskStatusLabels[status]}
             </option>
           ))}
         </select>

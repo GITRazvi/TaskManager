@@ -1,8 +1,13 @@
+// File responsibility: Renders task-list filtering controls for status, priority, assignee, and due-date ranges.
 import type { TaskFilters as Filters, TaskPriority, TaskStatus } from "../../types";
+import { taskStatusLabels, taskStatusOptions } from "../../utils/taskStatus";
 
-const statuses: TaskStatus[] = ["TODO", "IN_PROGRESS", "DONE"];
 const priorities: TaskPriority[] = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
+/**
+ * Renders task filter controls and emits merged filter state.
+ * filters stores the current list filters; onChange receives the next filter object after each control change.
+ */
 export function TaskFilters({
   filters,
   onChange
@@ -20,9 +25,9 @@ export function TaskFilters({
         }
       >
         <option value="">All statuses</option>
-        {statuses.map((status) => (
+        {taskStatusOptions.map((status) => (
           <option key={status} value={status}>
-            {status.replace("_", " ")}
+            {taskStatusLabels[status]}
           </option>
         ))}
       </select>

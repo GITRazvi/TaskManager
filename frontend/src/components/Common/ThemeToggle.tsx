@@ -1,6 +1,10 @@
+// File responsibility: Renders the button that switches between light and dark themes.
 import { Moon, Sun } from "lucide-react";
 import { useThemeStore } from "../../store/themeStore";
 
+/**
+ * Toggles persisted theme state between light and dark modes.
+ */
 export function ThemeToggle() {
   const theme = useThemeStore((state) => state.theme);
   const toggleTheme = useThemeStore((state) => state.toggleTheme);

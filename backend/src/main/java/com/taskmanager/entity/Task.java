@@ -90,6 +90,11 @@ public class Task {
     @Builder.Default
     private List<TaskComment> comments = new ArrayList<>();
 
+    @OneToMany(mappedBy = "task", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("createdAt ASC")
+    @Builder.Default
+    private List<TaskStatusHistory> statusHistory = new ArrayList<>();
+
     @Column(name = "due_date")
     private LocalDate dueDate;
 
@@ -267,6 +272,20 @@ public class Task {
      */
     public void setComments(List<TaskComment> comments) {
         this.comments = comments;
+    }
+
+    /**
+     * Returns the append-only workflow status history attached to this task.
+     */
+    public List<TaskStatusHistory> getStatusHistory() {
+        return statusHistory;
+    }
+
+    /**
+     * Sets the workflow status history attached to this task.
+     */
+    public void setStatusHistory(List<TaskStatusHistory> statusHistory) {
+        this.statusHistory = statusHistory;
     }
 
     /**

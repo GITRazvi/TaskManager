@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -59,7 +60,7 @@ public class ProjectController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.success(
-                        projectService.createProject(request, principal.getId()),
+                        projectService.createProject(request, principal.getId(), principal.getRole()),
                         "Project created successfully"
                 ));
     }
@@ -71,8 +72,17 @@ public class ProjectController {
             @Valid @RequestBody ProjectUpdateRequest request
     ) {
         return ResponseEntity.ok(ApiResponse.success(
-                projectService.updateProject(id, principal.getId(), request),
+                projectService.updateProject(id, principal.getId(), principal.getRole(), request),
                 "Project updated successfully"
         ));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteProject(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal principal
+    ) {
+        projectService.deleteProject(id, principal.getId(), principal.getRole());
+        return ResponseEntity.ok(ApiResponse.success(null, "Project deleted successfully"));
     }
 }

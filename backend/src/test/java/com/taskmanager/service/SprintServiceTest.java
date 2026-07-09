@@ -17,7 +17,9 @@ import com.taskmanager.entity.User;
 import com.taskmanager.entity.enums.SprintStatus;
 import com.taskmanager.entity.enums.TaskPriority;
 import com.taskmanager.entity.enums.TaskStatus;
+import com.taskmanager.entity.enums.UserRole;
 import com.taskmanager.exception.AppException;
+import com.taskmanager.exception.ForbiddenException;
 import com.taskmanager.repository.ProjectRepository;
 import com.taskmanager.repository.SprintRepository;
 import com.taskmanager.repository.TaskRepository;
@@ -78,7 +80,7 @@ class SprintServiceTest {
             return sprint;
         });
 
-        var response = sprintService.createSprint(request, userId);
+        var response = sprintService.createSprint(request, userId, UserRole.PROJECT_MANAGER);
 
         assertThat(response.name()).isEqualTo("Sprint 1");
         assertThat(response.userId()).isEqualTo(userId);
@@ -132,7 +134,7 @@ class SprintServiceTest {
             return sprint;
         });
 
-        var response = sprintService.createSprint(request, userId);
+        var response = sprintService.createSprint(request, userId, UserRole.PROJECT_MANAGER);
 
         assertThat(response.participants()).extracting("id").containsExactly(userId, miraId, noahId);
     }
@@ -162,13 +164,47 @@ class SprintServiceTest {
                 null,
                 List.of("noah@example.com")
         );
-        when(sprintRepository.findByIdAndUserId(sprintId, userId)).thenReturn(Optional.of(sprint));
+        when(sprintRepository.findAccessibleByIdAndUserId(sprintId, userId)).thenReturn(Optional.of(sprint));
         when(userRepository.findActiveByUsernameOrEmail("noah@example.com")).thenReturn(Optional.of(noah));
 
-        var response = sprintService.updateSprint(sprintId, userId, request);
+        var response = sprintService.updateSprint(sprintId, userId, UserRole.PROJECT_MANAGER, request);
 
         assertThat(sprint.getParticipants()).containsExactly(user, noah);
         assertThat(response.participants()).extracting("id").containsExactly(userId, noahId);
+    }
+
+    /**
+     * Verifies sprint managers can edit visible participant sprints without owning the sprint or project.
+     */
+    @Test
+    void updateSprintAllowsManagerToEditAccessibleSprint() {
+        UUID ownerId = UUID.randomUUID();
+        UUID managerId = UUID.randomUUID();
+        UUID sprintId = UUID.randomUUID();
+        UUID projectId = UUID.randomUUID();
+        User owner = activeUser(ownerId, "owner", "owner@example.com");
+        User manager = activeUser(managerId, "manager", "manager@example.com");
+        Project project = project(projectId, owner);
+        Sprint sprint = sprint(sprintId, owner, project);
+        sprint.setParticipants(new LinkedHashSet<>(List.of(owner, manager)));
+        SprintUpdateRequest request = new SprintUpdateRequest(
+                "Updated sprint",
+                null,
+                projectId,
+                null,
+                null,
+                SprintStatus.ACTIVE,
+                null
+        );
+        when(sprintRepository.findAccessibleByIdAndUserId(sprintId, managerId)).thenReturn(Optional.of(sprint));
+        when(projectRepository.findByIdAndUserId(projectId, ownerId)).thenReturn(Optional.of(project));
+
+        var response = sprintService.updateSprint(sprintId, managerId, UserRole.PROJECT_MANAGER, request);
+
+        assertThat(response.name()).isEqualTo("Updated sprint");
+        assertThat(response.status()).isEqualTo(SprintStatus.ACTIVE);
+        assertThat(response.projectId()).isEqualTo(projectId);
+        verify(projectRepository).findByIdAndUserId(projectId, ownerId);
     }
 
     /**
@@ -182,7 +218,7 @@ class SprintServiceTest {
         Sprint sprint = sprint(sprintId, user, project(UUID.randomUUID(), user));
         when(sprintRepository.findByIdAndUserId(sprintId, userId)).thenReturn(Optional.of(sprint));
 
-        sprintService.deleteSprint(sprintId, userId);
+        sprintService.deleteSprint(sprintId, userId, UserRole.PROJECT_MANAGER);
 
         verify(sprintRepository).delete(sprint);
     }
@@ -196,7 +232,7 @@ class SprintServiceTest {
         LocalDate startDate = LocalDate.now().plusDays(1);
         SprintCreateRequest request = new SprintCreateRequest("Sprint 1", null, UUID.randomUUID(), startDate, startDate, List.of());
 
-        assertThatThrownBy(() -> sprintService.createSprint(request, userId))
+        assertThatThrownBy(() -> sprintService.createSprint(request, userId, UserRole.PROJECT_MANAGER))
                 .isInstanceOf(AppException.class)
                 .hasMessage("Sprint end date must be after start date")
                 .extracting("errorCode")
@@ -207,7 +243,31 @@ class SprintServiceTest {
     }
 
     /**
-     * Verifies sprint statistics derive totals, velocity, completion percentage, and priority counts from tasks.
+     * Verifies developers cannot create sprints.
+     */
+    @Test
+    void createSprintRejectsDeveloper() {
+        UUID userId = UUID.randomUUID();
+        LocalDate startDate = LocalDate.now().plusDays(1);
+        SprintCreateRequest request = new SprintCreateRequest(
+                "Sprint 1",
+                null,
+                UUID.randomUUID(),
+                startDate,
+                startDate.plusWeeks(2),
+                List.of()
+        );
+
+        assertThatThrownBy(() -> sprintService.createSprint(request, userId, UserRole.DEVELOPER))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessage("Only admins and project managers can manage sprints");
+
+        verify(userRepository, never()).findById(any(UUID.class));
+        verify(sprintRepository, never()).save(any(Sprint.class));
+    }
+
+    /**
+     * Verifies sprint statistics derive task totals, story point totals, overdue count, and priority counts from tasks.
      */
     @Test
     void getSprintStatsCalculatesCompletionAndPriorityCounts() {
@@ -217,9 +277,9 @@ class SprintServiceTest {
         Sprint sprint = sprint(sprintId, user, project(UUID.randomUUID(), user));
         when(sprintRepository.findAccessibleByIdAndUserId(sprintId, userId)).thenReturn(Optional.of(sprint));
         when(taskRepository.findAllBySprintId(sprintId)).thenReturn(List.of(
-                task(UUID.randomUUID(), user, sprint, TaskStatus.DONE, TaskPriority.HIGH),
-                task(UUID.randomUUID(), user, sprint, TaskStatus.IN_PROGRESS, TaskPriority.HIGH),
-                task(UUID.randomUUID(), user, sprint, TaskStatus.TODO, TaskPriority.LOW)
+                task(UUID.randomUUID(), user, sprint, TaskStatus.DONE, TaskPriority.HIGH, 5, LocalDate.now().minusDays(2)),
+                task(UUID.randomUUID(), user, sprint, TaskStatus.IN_PROGRESS, TaskPriority.HIGH, 3, LocalDate.now().minusDays(1)),
+                task(UUID.randomUUID(), user, sprint, TaskStatus.TODO, TaskPriority.LOW, 2, LocalDate.now().plusDays(1))
         ));
 
         var stats = sprintService.getSprintStats(sprintId, userId);
@@ -229,13 +289,17 @@ class SprintServiceTest {
         assertThat(stats.completedTasks()).isEqualTo(1);
         assertThat(stats.velocity()).isEqualTo(1);
         assertThat(stats.completionPercentage()).isEqualTo(100.0 / 3.0);
+        assertThat(stats.completedStoryPoints()).isEqualTo(5);
+        assertThat(stats.remainingStoryPoints()).isEqualTo(5);
+        assertThat(stats.totalStoryPoints()).isEqualTo(10);
+        assertThat(stats.overdueTasks()).isEqualTo(1);
         assertThat(stats.tasksByPriority())
                 .containsEntry(TaskPriority.HIGH, 2L)
                 .containsEntry(TaskPriority.LOW, 1L);
     }
 
     /**
-     * Verifies sprint board output groups tasks into todo, in-progress, and done lists by status.
+     * Verifies sprint board output groups tasks into todo, in-progress, review, and done lists by status.
      */
     @Test
     void getSprintBoardGroupsTasksByStatus() {
@@ -247,6 +311,7 @@ class SprintServiceTest {
         when(taskRepository.findAllBySprintId(sprintId)).thenReturn(List.of(
                 task(UUID.randomUUID(), user, sprint, TaskStatus.TODO, TaskPriority.MEDIUM),
                 task(UUID.randomUUID(), user, sprint, TaskStatus.IN_PROGRESS, TaskPriority.HIGH),
+                task(UUID.randomUUID(), user, sprint, TaskStatus.REVIEW, TaskPriority.HIGH),
                 task(UUID.randomUUID(), user, sprint, TaskStatus.DONE, TaskPriority.LOW)
         ));
 
@@ -255,9 +320,11 @@ class SprintServiceTest {
         assertThat(board.sprintId()).isEqualTo(sprintId);
         assertThat(board.todo()).hasSize(1);
         assertThat(board.inProgress()).hasSize(1);
+        assertThat(board.review()).hasSize(1);
         assertThat(board.done()).hasSize(1);
         assertThat(board.todo().get(0).status()).isEqualTo(TaskStatus.TODO);
         assertThat(board.inProgress().get(0).status()).isEqualTo(TaskStatus.IN_PROGRESS);
+        assertThat(board.review().get(0).status()).isEqualTo(TaskStatus.REVIEW);
         assertThat(board.done().get(0).status()).isEqualTo(TaskStatus.DONE);
     }
 
@@ -310,6 +377,21 @@ class SprintServiceTest {
      * Builds a Task fixture linked to {@code user} and {@code sprint} with the supplied status and priority.
      */
     private static Task task(UUID taskId, User user, Sprint sprint, TaskStatus status, TaskPriority priority) {
+        return task(taskId, user, sprint, status, priority, null, null);
+    }
+
+    /**
+     * Builds a Task fixture linked to {@code user} and {@code sprint} with estimate and due-date fields.
+     */
+    private static Task task(
+            UUID taskId,
+            User user,
+            Sprint sprint,
+            TaskStatus status,
+            TaskPriority priority,
+            Integer storyPoints,
+            LocalDate dueDate
+    ) {
         Task task = new Task();
         task.setId(taskId);
         task.setUser(user);
@@ -317,6 +399,8 @@ class SprintServiceTest {
         task.setTitle(status.name());
         task.setStatus(status);
         task.setPriority(priority);
+        task.setStoryPoints(storyPoints);
+        task.setDueDate(dueDate);
         return task;
     }
 }

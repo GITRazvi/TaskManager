@@ -1,3 +1,4 @@
+// File responsibility: Stores the selected UI theme and persists it across sessions.
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
@@ -9,6 +10,9 @@ interface ThemeState {
   toggleTheme: () => void;
 }
 
+/**
+ * Resolves the initial theme from the browser color-scheme preference.
+ */
 const getPreferredTheme = (): Theme => {
   if (typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches) {
     return "dark";
@@ -17,6 +21,9 @@ const getPreferredTheme = (): Theme => {
   return "light";
 };
 
+/**
+ * Persists theme selection and exposes helpers for direct selection or toggling.
+ */
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set) => ({

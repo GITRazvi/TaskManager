@@ -8,6 +8,7 @@ public record SprintBoardResponse(
         UUID sprintId,
         List<TaskResponse> todo,
         List<TaskResponse> inProgress,
+        List<TaskResponse> review,
         List<TaskResponse> done
 ) {
 }

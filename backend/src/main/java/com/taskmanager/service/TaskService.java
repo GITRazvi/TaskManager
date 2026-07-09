@@ -7,18 +7,24 @@ import com.taskmanager.dto.TaskCommentResponse;
 import com.taskmanager.dto.TaskCreateRequest;
 import com.taskmanager.dto.TaskListResponse;
 import com.taskmanager.dto.TaskResponse;
+import com.taskmanager.dto.TaskStatsResponse;
 import com.taskmanager.dto.TaskUpdateRequest;
+import com.taskmanager.entity.Project;
 import com.taskmanager.entity.Sprint;
 import com.taskmanager.entity.Task;
 import com.taskmanager.entity.TaskComment;
+import com.taskmanager.entity.TaskStatusHistory;
 import com.taskmanager.entity.User;
 import com.taskmanager.entity.enums.TaskPriority;
 import com.taskmanager.entity.enums.TaskStatus;
+import com.taskmanager.entity.enums.UserRole;
 import com.taskmanager.exception.AppException;
+import com.taskmanager.exception.ForbiddenException;
 import com.taskmanager.exception.ResourceNotFoundException;
 import com.taskmanager.repository.SprintRepository;
 import com.taskmanager.repository.TaskCommentRepository;
 import com.taskmanager.repository.TaskRepository;
+import com.taskmanager.repository.TaskStatusHistoryRepository;
 import com.taskmanager.repository.UserRepository;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
@@ -26,8 +32,12 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -46,6 +56,7 @@ public class TaskService {
     private final UserRepository userRepository;
     private final SprintRepository sprintRepository;
     private final TaskCommentRepository taskCommentRepository;
+    private final TaskStatusHistoryRepository taskStatusHistoryRepository;
 
     /**
      * Creates the task service with repositories used for task persistence, user lookup, and sprint ownership checks.
@@ -54,21 +65,24 @@ public class TaskService {
             TaskRepository taskRepository,
             UserRepository userRepository,
             SprintRepository sprintRepository,
-            TaskCommentRepository taskCommentRepository
+            TaskCommentRepository taskCommentRepository,
+            TaskStatusHistoryRepository taskStatusHistoryRepository
     ) {
         this.taskRepository = taskRepository;
         this.userRepository = userRepository;
         this.sprintRepository = sprintRepository;
         this.taskCommentRepository = taskCommentRepository;
+        this.taskStatusHistoryRepository = taskStatusHistoryRepository;
     }
 
     /**
      * Creates a task for {@code userId}, resolving optional sprint and assignee ids and defaulting status/priority.
      */
     @Transactional
-    public TaskResponse createTask(TaskCreateRequest request, UUID userId) {
+    public TaskResponse createTask(TaskCreateRequest request, UUID userId, UserRole userRole) {
         validateDueDate(request.dueDate());
         User user = getUser(userId);
+        validateDeveloperCreateRequest(request, userId, userRole);
 
         Task task = new Task();
         Sprint sprint = resolveSprint(request.sprintId(), userId);
@@ -84,6 +98,7 @@ public class TaskService {
         task.setStoryPoints(validateStoryPoints(request.storyPoints()));
         task.setEstimatedHours(validateEstimatedHours(request.estimatedHours()));
         Task savedTask = taskRepository.save(task);
+        addStatusHistory(savedTask, null, savedTask.getStatus(), user);
         addCommentIfPresent(savedTask, user, request.comments());
 
         return TaskResponse.from(savedTask);
@@ -127,12 +142,80 @@ public class TaskService {
     }
 
     /**
+     * Calculates aggregate metrics for all tasks visible to {@code userId} across projects and sprints.
+     */
+    @Transactional(readOnly = true)
+    public List<TaskStatsResponse> getTaskStats(UUID userId) {
+        List<Task> tasks = taskRepository.findAll(buildFilter(userId, null, null, null, null, null));
+        Map<UUID, Project> projectsById = sprintRepository.findAllAccessibleByUserId(userId).stream()
+                .map(Sprint::getProject)
+                .filter(project -> project != null)
+                .collect(Collectors.toMap(
+                        Project::getId,
+                        project -> project,
+                        (left, right) -> left,
+                        LinkedHashMap::new
+                ));
+        Map<UUID, List<Task>> tasksByProjectId = tasks.stream()
+                .filter(task -> task.getSprint() != null && task.getSprint().getProject() != null)
+                .collect(Collectors.groupingBy(task -> task.getSprint().getProject().getId()));
+
+        return projectsById.values().stream()
+                .map(project -> buildTaskStats(
+                        project,
+                        tasksByProjectId.getOrDefault(project.getId(), List.of())
+                ))
+                .toList();
+    }
+
+    private TaskStatsResponse buildTaskStats(Project project, List<Task> tasks) {
+        long totalTasks = tasks.size();
+        long completedTasks = tasks.stream()
+                .filter(task -> task.getStatus() == TaskStatus.DONE)
+                .count();
+        double completionPercentage = totalTasks == 0 ? 0 : (completedTasks * 100.0) / totalTasks;
+        LocalDate today = LocalDate.now();
+        long completedStoryPoints = tasks.stream()
+                .filter(task -> task.getStatus() == TaskStatus.DONE)
+                .mapToLong(task -> task.getStoryPoints() == null ? 0 : task.getStoryPoints())
+                .sum();
+        long remainingStoryPoints = tasks.stream()
+                .filter(task -> task.getStatus() != TaskStatus.DONE)
+                .mapToLong(task -> task.getStoryPoints() == null ? 0 : task.getStoryPoints())
+                .sum();
+        long overdueTasks = tasks.stream()
+                .filter(task -> task.getStatus() != TaskStatus.DONE)
+                .filter(task -> task.getDueDate() != null && task.getDueDate().isBefore(today))
+                .count();
+        Map<TaskStatus, Long> tasksByStatus = tasks.stream()
+                .collect(Collectors.groupingBy(Task::getStatus, () -> new EnumMap<>(TaskStatus.class), Collectors.counting()));
+        Map<TaskPriority, Long> tasksByPriority = tasks.stream()
+                .collect(Collectors.groupingBy(Task::getPriority, () -> new EnumMap<>(TaskPriority.class), Collectors.counting()));
+
+        return new TaskStatsResponse(
+                project.getId(),
+                project.getName(),
+                totalTasks,
+                completedTasks,
+                completionPercentage,
+                completedStoryPoints,
+                remainingStoryPoints,
+                completedStoryPoints + remainingStoryPoints,
+                overdueTasks,
+                tasksByStatus,
+                tasksByPriority
+        );
+    }
+
+    /**
      * Applies non-null updates to a visible task, validating title, due date, sprint access, and assignee identity.
      */
     @Transactional
-    public TaskResponse updateTask(UUID taskId, UUID userId, TaskUpdateRequest request) {
+    public TaskResponse updateTask(UUID taskId, UUID userId, UserRole userRole, TaskUpdateRequest request) {
         validateDueDate(request.dueDate());
         Task task = getVisibleTask(taskId, userId);
+        ensureCanUpdateTask(task, userId, userRole, request);
+        validateTaskUpdatePermissions(request, task, userId, userRole);
 
         if (request.title() != null) {
             if (request.title().isBlank()) {
@@ -144,7 +227,7 @@ public class TaskService {
             task.setDescription(request.description());
         }
         if (request.status() != null) {
-            task.setStatus(request.status());
+            changeStatus(task, request.status(), getUser(userId));
         }
         if (request.priority() != null) {
             task.setPriority(request.priority());
@@ -222,8 +305,9 @@ public class TaskService {
      * Deletes the task identified by {@code taskId} only when it is owned by {@code userId}.
      */
     @Transactional
-    public void deleteTask(UUID taskId, UUID userId) {
-        taskRepository.delete(getOwnedTask(taskId, userId));
+    public void deleteTask(UUID taskId, UUID userId, UserRole userRole) {
+        Task task = userRole.canEditAnyVisibleTask() ? getVisibleTask(taskId, userId) : getOwnedTask(taskId, userId);
+        taskRepository.delete(task);
     }
 
     /**
@@ -232,8 +316,33 @@ public class TaskService {
     @Transactional
     public TaskResponse updateStatus(UUID taskId, UUID userId, TaskStatus status) {
         Task task = getVisibleTask(taskId, userId);
-        task.setStatus(status);
+        changeStatus(task, status, getUser(userId));
         return TaskResponse.from(task);
+    }
+
+    /**
+     * Mutates the task status and appends a history entry only when the workflow state actually changes.
+     */
+    private void changeStatus(Task task, TaskStatus toStatus, User changedBy) {
+        TaskStatus fromStatus = task.getStatus();
+        if (fromStatus == toStatus) {
+            return;
+        }
+        task.setStatus(toStatus);
+        addStatusHistory(task, fromStatus, toStatus, changedBy);
+    }
+
+    /**
+     * Appends an immutable status transition to the task history collection and repository.
+     */
+    private void addStatusHistory(Task task, TaskStatus fromStatus, TaskStatus toStatus, User changedBy) {
+        TaskStatusHistory history = new TaskStatusHistory();
+        history.setTask(task);
+        history.setFromStatus(fromStatus);
+        history.setToStatus(toStatus);
+        history.setChangedBy(changedBy);
+        TaskStatusHistory savedHistory = taskStatusHistoryRepository.save(history);
+        task.getStatusHistory().add(savedHistory == null ? history : savedHistory);
     }
 
     /**
@@ -403,6 +512,45 @@ public class TaskService {
         if (dueDate != null && dueDate.isBefore(LocalDate.now())) {
             throw new AppException(HttpStatus.BAD_REQUEST, "INVALID_DUE_DATE", "Due date cannot be in the past");
         }
+    }
+
+    private void validateDeveloperCreateRequest(TaskCreateRequest request, UUID userId, UserRole role) {
+        if (role.canSetTaskMetadata()) {
+            return;
+        }
+        if (request.assignedToId() != null && !request.assignedToId().equals(userId)) {
+            throw new ForbiddenException("Developers can only assign tasks to themselves");
+        }
+    }
+
+    private void validateTaskUpdatePermissions(TaskUpdateRequest request, Task task, UUID userId, UserRole role) {
+        if (role.canSetTaskMetadata()) {
+            return;
+        }
+        if (request.sprintId() != null) {
+            UUID currentSprintId = task.getSprint() == null ? null : task.getSprint().getId();
+            if (!request.sprintId().equals(currentSprintId)) {
+                throw new ForbiddenException("Developers cannot move tasks between sprints");
+            }
+        }
+        if (request.assignedToId() != null && !request.assignedToId().equals(userId)) {
+            throw new ForbiddenException("Developers can only assign tasks to themselves");
+        }
+    }
+
+    private void ensureCanUpdateTask(Task task, UUID userId, UserRole role, TaskUpdateRequest request) {
+        if (role.canEditAnyVisibleTask() || task.getUser().getId().equals(userId)) {
+            return;
+        }
+        if (request.title() == null
+                && request.description() == null
+                && request.dueDate() == null
+                && request.sprintId() == null
+                && request.assignedToId() == null
+                && request.comments() == null) {
+            return;
+        }
+        throw new ForbiddenException("Developers can only edit status and task metadata on visible tasks they did not create");
     }
 
     /**

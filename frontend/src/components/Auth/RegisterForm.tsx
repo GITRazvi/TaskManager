@@ -1,3 +1,4 @@
+// File responsibility: Renders and validates the account registration form.
 import { zodResolver } from "@hookform/resolvers/zod";
 import { UserPlus } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -15,6 +16,9 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+/**
+ * Renders the registration form and submits validated account data through the auth mutation.
+ */
 export function RegisterForm() {
   const registerUser = useRegister();
   const navigate = useNavigate();

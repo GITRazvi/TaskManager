@@ -77,7 +77,7 @@ public class SprintController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.success(
-                        sprintService.createSprint(request, principal.getId()),
+                        sprintService.createSprint(request, principal.getId(), principal.getRole()),
                         "Sprint created successfully"
                 ));
     }
@@ -92,7 +92,7 @@ public class SprintController {
             @Valid @RequestBody SprintUpdateRequest request
     ) {
         return ResponseEntity.ok(ApiResponse.success(
-                sprintService.updateSprint(id, principal.getId(), request),
+                sprintService.updateSprint(id, principal.getId(), principal.getRole(), request),
                 "Sprint updated successfully"
         ));
     }
@@ -105,7 +105,7 @@ public class SprintController {
             @PathVariable UUID id,
             @AuthenticationPrincipal UserPrincipal principal
     ) {
-        sprintService.deleteSprint(id, principal.getId());
+        sprintService.deleteSprint(id, principal.getId(), principal.getRole());
         return ResponseEntity.ok(ApiResponse.success(null, "Sprint deleted successfully"));
     }
 

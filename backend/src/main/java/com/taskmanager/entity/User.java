@@ -1,8 +1,11 @@
 // File responsibility: Maps the user domain entity, authentication fields, profile fields, tasks, projects, and sprints to the database.
 package com.taskmanager.entity;
 
+import com.taskmanager.entity.enums.UserRole;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
@@ -48,6 +51,11 @@ public class User {
 
     @Column(name = "avatar_url", columnDefinition = "TEXT")
     private String avatarUrl;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 50)
+    @Builder.Default
+    private UserRole role = UserRole.DEVELOPER;
 
     @Column(name = "is_active", nullable = false)
     @Builder.Default
@@ -155,6 +163,20 @@ public class User {
      */
     public void setAvatarUrl(String avatarUrl) {
         this.avatarUrl = avatarUrl;
+    }
+
+    /**
+     * Returns the user's application role, defaulting legacy null values to developer.
+     */
+    public UserRole getRole() {
+        return role == null ? UserRole.DEVELOPER : role;
+    }
+
+    /**
+     * Sets the user's application role.
+     */
+    public void setRole(UserRole role) {
+        this.role = role == null ? UserRole.DEVELOPER : role;
     }
 
     /**

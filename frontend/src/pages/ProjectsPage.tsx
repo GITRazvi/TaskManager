@@ -1,12 +1,13 @@
+// File responsibility: Renders project management workflows for listing, creating, editing, and deleting projects.
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FolderKanban, Pencil, Plus, Save, X } from "lucide-react";
+import { FolderKanban, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useSearchParams } from "react-router-dom";
 import { z } from "zod";
 import { getApiErrorMessage } from "../api/client";
 import { Loading } from "../components/Common/Loading";
-import { useCreateProject, useProjects, useUpdateProject } from "../hooks/useProjects";
+import { useCreateProject, useDeleteProject, useProjects, useUpdateProject } from "../hooks/useProjects";
 import type { Project } from "../types";
 
 const schema = z.object({
@@ -16,11 +17,16 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+/**
+ * Renders project CRUD controls and honors dashboard links to a specific project.
+ * linkedProjectId stores the optional query-param project id used to open a project for editing.
+ */
 export function ProjectsPage() {
   const [searchParams] = useSearchParams();
   const projects = useProjects();
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();
+  const deleteProject = useDeleteProject();
   const linkedProjectId = searchParams.get("project");
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const form = useForm<FormValues>({
@@ -72,9 +78,24 @@ export function ProjectsPage() {
     });
   });
 
-  const error = createProject.error || updateProject.error || projects.error;
+  const handleDeleteProject = (project: Project) => {
+    if (deleteProject.isLoading) {
+      return;
+    }
+    if (window.confirm(`Delete project "${project.name}"? Sprints in this project must be removed first.`)) {
+      deleteProject.mutate(project.id, {
+        onSuccess: () => {
+          if (editingProject?.id === project.id) {
+            clearEdit();
+          }
+        }
+      });
+    }
+  };
+
+  const error = createProject.error || updateProject.error || deleteProject.error || projects.error;
   const errorMessage = error ? getApiErrorMessage(error) : null;
-  const isSaving = createProject.isLoading || updateProject.isLoading;
+  const isSaving = createProject.isLoading || updateProject.isLoading || deleteProject.isLoading;
 
   return (
     <div className="page-stack">
@@ -118,6 +139,15 @@ export function ProjectsPage() {
                     title="Edit project"
                   >
                     <Pencil aria-hidden="true" />
+                  </button>
+                  <button
+                    className="icon-button danger"
+                    type="button"
+                    onClick={() => handleDeleteProject(project)}
+                    aria-label={`Delete ${project.name}`}
+                    title="Delete project"
+                  >
+                    <Trash2 aria-hidden="true" />
                   </button>
                 </div>
               </article>

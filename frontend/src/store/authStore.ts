@@ -1,3 +1,4 @@
+// File responsibility: Stores authenticated user identity, JWT tokens, and session mutation helpers.
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { AuthResponse, User } from "../types";
@@ -11,6 +12,10 @@ interface AuthState {
   clearSession: () => void;
 }
 
+/**
+ * Persists authenticated session data.
+ * accessToken/refreshToken store backend JWTs; user stores the current profile used by permissions and display labels.
+ */
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({

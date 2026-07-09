@@ -1,7 +1,11 @@
+// File responsibility: Renders the login page around the login form.
 import { CheckSquare } from "lucide-react";
 import { LoginForm } from "../components/Auth/LoginForm";
 import { ThemeToggle } from "../components/Common/ThemeToggle";
 
+/**
+ * Renders the login screen.
+ */
 export function LoginPage() {
   return (
     <main className="auth-page">

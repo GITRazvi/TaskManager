@@ -1,7 +1,11 @@
+// File responsibility: Provides React Query hooks that synchronize authentication API calls with the auth store.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as authApi from "../api/auth";
 import { useAuthStore } from "../store/authStore";
 
+/**
+ * Loads and stores the current user when an access token exists.
+ */
 export function useCurrentUser() {
   const token = useAuthStore((state) => state.accessToken);
   const setUser = useAuthStore((state) => state.setUser);
@@ -15,6 +19,9 @@ export function useCurrentUser() {
   });
 }
 
+/**
+ * Logs in and stores the returned user and token session.
+ */
 export function useLogin() {
   const setSession = useAuthStore((state) => state.setSession);
 
@@ -24,6 +31,9 @@ export function useLogin() {
   });
 }
 
+/**
+ * Registers a new account and stores the returned user and token session.
+ */
 export function useRegister() {
   const setSession = useAuthStore((state) => state.setSession);
 
@@ -33,6 +43,9 @@ export function useRegister() {
   });
 }
 
+/**
+ * Logs out, clears auth state, and removes cached query data.
+ */
 export function useLogout() {
   const queryClient = useQueryClient();
   const clearSession = useAuthStore((state) => state.clearSession);

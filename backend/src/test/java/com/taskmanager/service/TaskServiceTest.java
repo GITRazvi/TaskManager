@@ -10,15 +10,19 @@ import static org.mockito.Mockito.when;
 
 import com.taskmanager.dto.TaskCreateRequest;
 import com.taskmanager.dto.TaskUpdateRequest;
+import com.taskmanager.entity.Project;
 import com.taskmanager.entity.Sprint;
 import com.taskmanager.entity.Task;
 import com.taskmanager.entity.User;
 import com.taskmanager.entity.enums.TaskPriority;
 import com.taskmanager.entity.enums.TaskStatus;
+import com.taskmanager.entity.enums.UserRole;
 import com.taskmanager.exception.AppException;
+import com.taskmanager.exception.ForbiddenException;
 import com.taskmanager.repository.SprintRepository;
 import com.taskmanager.repository.TaskCommentRepository;
 import com.taskmanager.repository.TaskRepository;
+import com.taskmanager.repository.TaskStatusHistoryRepository;
 import com.taskmanager.repository.UserRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -46,6 +50,9 @@ class TaskServiceTest {
     @Mock
     private TaskCommentRepository taskCommentRepository;
 
+    @Mock
+    private TaskStatusHistoryRepository taskStatusHistoryRepository;
+
     private TaskService taskService;
 
     /**
@@ -53,7 +60,13 @@ class TaskServiceTest {
      */
     @BeforeEach
     void setUp() {
-        taskService = new TaskService(taskRepository, userRepository, sprintRepository, taskCommentRepository);
+        taskService = new TaskService(
+                taskRepository,
+                userRepository,
+                sprintRepository,
+                taskCommentRepository,
+                taskStatusHistoryRepository
+        );
     }
 
     /**
@@ -88,8 +101,9 @@ class TaskServiceTest {
             task.setId(UUID.randomUUID());
             return task;
         });
+        when(taskStatusHistoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        var response = taskService.createTask(request, userId);
+        var response = taskService.createTask(request, userId, UserRole.PROJECT_MANAGER);
 
         assertThat(response.title()).isEqualTo("Write tests");
         assertThat(response.status()).isEqualTo(TaskStatus.TODO);
@@ -99,6 +113,10 @@ class TaskServiceTest {
         assertThat(response.storyPoints()).isEqualTo(3);
         assertThat(response.estimatedHours()).isEqualByComparingTo("6.5");
         assertThat(response.comments()).extracting("content").containsExactly("Ready for review");
+        assertThat(response.statusHistory()).hasSize(1);
+        assertThat(response.statusHistory().get(0).fromStatus()).isNull();
+        assertThat(response.statusHistory().get(0).toStatus()).isEqualTo(TaskStatus.TODO);
+        assertThat(response.statusHistory().get(0).changedById()).isEqualTo(userId);
         assertThat(response.dueDate()).isEqualTo(dueDate);
 
         ArgumentCaptor<Task> taskCaptor = ArgumentCaptor.forClass(Task.class);
@@ -110,6 +128,7 @@ class TaskServiceTest {
         assertThat(savedTask.getStoryPoints()).isEqualTo(3);
         assertThat(savedTask.getEstimatedHours()).isEqualByComparingTo("6.5");
         assertThat(savedTask.getComments()).extracting("content").containsExactly("Ready for review");
+        verify(taskStatusHistoryRepository).save(any());
     }
 
     /**
@@ -144,8 +163,9 @@ class TaskServiceTest {
             task.setId(UUID.randomUUID());
             return task;
         });
+        when(taskStatusHistoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        var response = taskService.createTask(request, userId);
+        var response = taskService.createTask(request, userId, UserRole.PROJECT_MANAGER);
 
         assertThat(response.reviewerId()).isEqualTo(reviewerId);
         assertThat(response.storyPoints()).isEqualTo(5);
@@ -179,7 +199,7 @@ class TaskServiceTest {
         when(userRepository.findById(reviewerId)).thenReturn(Optional.of(reviewer));
         when(sprintRepository.findAccessibleByIdAndUserId(sprintId, userId)).thenReturn(Optional.of(sprint));
 
-        assertThatThrownBy(() -> taskService.createTask(request, userId))
+        assertThatThrownBy(() -> taskService.createTask(request, userId, UserRole.PROJECT_MANAGER))
                 .isInstanceOf(AppException.class)
                 .hasMessage("Task reviewer must belong to the same sprint")
                 .extracting("errorCode")
@@ -207,7 +227,7 @@ class TaskServiceTest {
                 null
         );
 
-        assertThatThrownBy(() -> taskService.createTask(request, userId))
+        assertThatThrownBy(() -> taskService.createTask(request, userId, UserRole.PROJECT_MANAGER))
                 .isInstanceOf(AppException.class)
                 .hasMessage("Due date cannot be in the past")
                 .extracting("errorCode")
@@ -227,7 +247,7 @@ class TaskServiceTest {
         when(taskRepository.findVisibleByIdAndUserId(taskId, userId)).thenReturn(Optional.of(task(taskId, activeUser(userId))));
         TaskUpdateRequest request = new TaskUpdateRequest("   ", null, null, null, null, null, null, null, null, null, null);
 
-        assertThatThrownBy(() -> taskService.updateTask(taskId, userId, request))
+        assertThatThrownBy(() -> taskService.updateTask(taskId, userId, UserRole.PROJECT_MANAGER, request))
                 .isInstanceOf(AppException.class)
                 .hasMessage("Task title cannot be blank")
                 .extracting("errorCode")
@@ -264,7 +284,7 @@ class TaskServiceTest {
         when(taskRepository.findVisibleByIdAndUserId(taskId, userId)).thenReturn(Optional.of(task));
         when(userRepository.findById(userId)).thenReturn(Optional.of(participant));
 
-        var response = taskService.updateTask(taskId, userId, request);
+        var response = taskService.updateTask(taskId, userId, UserRole.PROJECT_MANAGER, request);
 
         assertThat(task.getStoryPoints()).isEqualTo(8);
         assertThat(task.getEstimatedHours()).isEqualByComparingTo("12.25");
@@ -272,6 +292,51 @@ class TaskServiceTest {
         assertThat(response.storyPoints()).isEqualTo(8);
         assertThat(response.estimatedHours()).isEqualByComparingTo("12.25");
         assertThat(response.comments()).extracting("content").containsExactly("Implementation notes");
+    }
+
+    /**
+     * Verifies developers can update metadata on visible sprint tasks created by another user.
+     */
+    @Test
+    void updateTaskAllowsDeveloperToChangeVisibleTaskMetadata() {
+        UUID userId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID reviewerId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        User owner = activeUser(ownerId, "owner", "owner@example.com");
+        User developer = activeUser(userId, "developer", "developer@example.com");
+        User reviewer = activeUser(reviewerId, "reviewer", "reviewer@example.com");
+        Sprint sprint = sprint(UUID.randomUUID(), owner);
+        sprint.getParticipants().add(developer);
+        sprint.getParticipants().add(reviewer);
+        Task task = task(taskId, owner);
+        task.setSprint(sprint);
+        TaskUpdateRequest request = new TaskUpdateRequest(
+                null,
+                null,
+                null,
+                TaskPriority.HIGH,
+                null,
+                null,
+                null,
+                reviewerId,
+                8,
+                new BigDecimal("12.25"),
+                null
+        );
+        when(taskRepository.findVisibleByIdAndUserId(taskId, userId)).thenReturn(Optional.of(task));
+        when(userRepository.findById(reviewerId)).thenReturn(Optional.of(reviewer));
+
+        var response = taskService.updateTask(taskId, userId, UserRole.DEVELOPER, request);
+
+        assertThat(task.getPriority()).isEqualTo(TaskPriority.HIGH);
+        assertThat(task.getReviewer()).isSameAs(reviewer);
+        assertThat(task.getStoryPoints()).isEqualTo(8);
+        assertThat(task.getEstimatedHours()).isEqualByComparingTo("12.25");
+        assertThat(response.priority()).isEqualTo(TaskPriority.HIGH);
+        assertThat(response.reviewerId()).isEqualTo(reviewerId);
+        assertThat(response.storyPoints()).isEqualTo(8);
+        assertThat(response.estimatedHours()).isEqualByComparingTo("12.25");
     }
 
     /**
@@ -321,11 +386,140 @@ class TaskServiceTest {
         Task task = task(taskId, activeUser(userId));
         task.setStatus(TaskStatus.TODO);
         when(taskRepository.findVisibleByIdAndUserId(taskId, userId)).thenReturn(Optional.of(task));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(task.getUser()));
+        when(taskStatusHistoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        var response = taskService.updateStatus(taskId, userId, TaskStatus.DONE);
+        var response = taskService.updateStatus(taskId, userId, TaskStatus.REVIEW);
 
-        assertThat(task.getStatus()).isEqualTo(TaskStatus.DONE);
-        assertThat(response.status()).isEqualTo(TaskStatus.DONE);
+        assertThat(task.getStatus()).isEqualTo(TaskStatus.REVIEW);
+        assertThat(response.status()).isEqualTo(TaskStatus.REVIEW);
+        assertThat(response.statusHistory()).hasSize(1);
+        assertThat(response.statusHistory().get(0).fromStatus()).isEqualTo(TaskStatus.TODO);
+        assertThat(response.statusHistory().get(0).toStatus()).isEqualTo(TaskStatus.REVIEW);
+        assertThat(response.statusHistory().get(0).changedById()).isEqualTo(userId);
+    }
+
+    /**
+     * Verifies dashboard task statistics aggregate visible tasks separately for each project.
+     */
+    @Test
+    void getTaskStatsAggregatesVisibleTasksByProject() {
+        UUID userId = UUID.randomUUID();
+        User user = activeUser(userId);
+        Project firstProject = project(UUID.randomUUID(), user, "Platform");
+        Project secondProject = project(UUID.randomUUID(), user, "Mobile");
+        Sprint firstSprint = sprint(UUID.randomUUID(), user);
+        firstSprint.setProject(firstProject);
+        Sprint secondSprint = sprint(UUID.randomUUID(), user);
+        secondSprint.setProject(secondProject);
+        Task done = task(UUID.randomUUID(), user);
+        done.setSprint(firstSprint);
+        done.setStatus(TaskStatus.DONE);
+        done.setPriority(TaskPriority.HIGH);
+        done.setStoryPoints(5);
+        done.setDueDate(LocalDate.now().minusDays(2));
+        Task overdue = task(UUID.randomUUID(), user);
+        overdue.setSprint(firstSprint);
+        overdue.setStatus(TaskStatus.IN_PROGRESS);
+        overdue.setPriority(TaskPriority.CRITICAL);
+        overdue.setStoryPoints(3);
+        overdue.setDueDate(LocalDate.now().minusDays(1));
+        Task planned = task(UUID.randomUUID(), user);
+        planned.setSprint(secondSprint);
+        planned.setStatus(TaskStatus.TODO);
+        planned.setPriority(TaskPriority.LOW);
+        planned.setStoryPoints(2);
+        planned.setDueDate(LocalDate.now().plusDays(1));
+        when(sprintRepository.findAllAccessibleByUserId(userId))
+                .thenReturn(java.util.List.of(firstSprint, secondSprint));
+        when(taskRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class)))
+                .thenReturn(java.util.List.of(done, overdue, planned));
+
+        var stats = taskService.getTaskStats(userId);
+        assertThat(stats).hasSize(2);
+        var platformStats = stats.get(0);
+        var mobileStats = stats.get(1);
+
+        assertThat(platformStats.projectId()).isEqualTo(firstProject.getId());
+        assertThat(platformStats.projectName()).isEqualTo("Platform");
+        assertThat(platformStats.totalTasks()).isEqualTo(2);
+        assertThat(platformStats.completedTasks()).isEqualTo(1);
+        assertThat(platformStats.completionPercentage()).isEqualTo(50.0);
+        assertThat(platformStats.completedStoryPoints()).isEqualTo(5);
+        assertThat(platformStats.remainingStoryPoints()).isEqualTo(3);
+        assertThat(platformStats.totalStoryPoints()).isEqualTo(8);
+        assertThat(platformStats.overdueTasks()).isEqualTo(1);
+        assertThat(platformStats.tasksByStatus())
+                .containsEntry(TaskStatus.DONE, 1L)
+                .containsEntry(TaskStatus.IN_PROGRESS, 1L);
+        assertThat(platformStats.tasksByPriority())
+                .containsEntry(TaskPriority.HIGH, 1L)
+                .containsEntry(TaskPriority.CRITICAL, 1L);
+        assertThat(mobileStats.projectId()).isEqualTo(secondProject.getId());
+        assertThat(mobileStats.projectName()).isEqualTo("Mobile");
+        assertThat(mobileStats.totalTasks()).isEqualTo(1);
+        assertThat(mobileStats.completedTasks()).isZero();
+        assertThat(mobileStats.remainingStoryPoints()).isEqualTo(2);
+        assertThat(mobileStats.overdueTasks()).isZero();
+        assertThat(mobileStats.tasksByStatus()).containsEntry(TaskStatus.TODO, 1L);
+    }
+
+    /**
+     * Verifies developers cannot create tasks assigned to another user.
+     */
+    @Test
+    void createTaskRejectsDeveloperAssigningAnotherUser() {
+        UUID userId = UUID.randomUUID();
+        UUID assigneeId = UUID.randomUUID();
+        User user = activeUser(userId);
+        TaskCreateRequest request = new TaskCreateRequest(
+                "Assign elsewhere",
+                null,
+                null,
+                null,
+                null,
+                assigneeId,
+                null,
+                null,
+                null,
+                null
+        );
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> taskService.createTask(request, userId, UserRole.DEVELOPER))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessage("Developers can only assign tasks to themselves");
+
+        verify(taskRepository, never()).save(any(Task.class));
+    }
+
+    /**
+     * Verifies developers cannot edit visible tasks created by another user.
+     */
+    @Test
+    void updateTaskRejectsDeveloperEditingAnotherUsersTask() {
+        UUID userId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID taskId = UUID.randomUUID();
+        Task task = task(taskId, activeUser(ownerId, "owner", "owner@example.com"));
+        TaskUpdateRequest request = new TaskUpdateRequest(
+                null,
+                "Updated description",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        when(taskRepository.findVisibleByIdAndUserId(taskId, userId)).thenReturn(Optional.of(task));
+
+        assertThatThrownBy(() -> taskService.updateTask(taskId, userId, UserRole.DEVELOPER, request))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessage("Developers can only edit status and task metadata on visible tasks they did not create");
     }
 
     /**
@@ -338,6 +532,8 @@ class TaskServiceTest {
         Task task = task(taskId, activeUser(userId));
         task.setStatus(TaskStatus.DONE);
         when(taskRepository.findVisibleByIdAndUserId(taskId, userId)).thenReturn(Optional.of(task));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(task.getUser()));
+        when(taskStatusHistoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         var response = taskService.updateStatus(taskId, userId, TaskStatus.TODO);
 
@@ -375,6 +571,17 @@ class TaskServiceTest {
         sprint.setStartDate(LocalDate.now());
         sprint.setEndDate(LocalDate.now().plusWeeks(2));
         return sprint;
+    }
+
+    /**
+     * Builds a Project fixture owned by {@code user}.
+     */
+    private static Project project(UUID projectId, User user, String name) {
+        Project project = new Project();
+        project.setId(projectId);
+        project.setUser(user);
+        project.setName(name);
+        return project;
     }
 
     /**

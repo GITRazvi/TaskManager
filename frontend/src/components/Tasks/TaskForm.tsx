@@ -1,3 +1,4 @@
+// File responsibility: Renders and validates the task creation and edit form.
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Save } from "lucide-react";
 import { useEffect, useMemo } from "react";
@@ -5,7 +6,9 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { getApiErrorMessage } from "../../api/client";
 import { useCreateTask, useUpdateTask } from "../../hooks/useTasks";
+import { useAuthStore } from "../../store/authStore";
 import type { Sprint, Task, TaskPriority, User } from "../../types";
+import { canAssignTaskTo, canSetTaskMetadata } from "../../utils/permissions";
 
 const schema = z.object({
   title: z.string().min(1, "Title is required").max(255),
@@ -28,6 +31,10 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+/**
+ * Renders task create/edit inputs and submits validated values.
+ * task stores edit defaults when present; users/sprints store selector options; onSaved notifies the parent after success.
+ */
 export function TaskForm({
   sprints,
   users,
@@ -47,6 +54,8 @@ export function TaskForm({
 }) {
   const createTask = useCreateTask();
   const updateTask = useUpdateTask();
+  const currentUser = useAuthStore((state) => state.user);
+  const canSetMetadata = canSetTaskMetadata(currentUser);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -68,6 +77,7 @@ export function TaskForm({
     [selectedSprintId, sprints]
   );
   const reviewerOptions = selectedSprint?.participants?.length ? selectedSprint.participants : users;
+  const assigneeOptions = users.filter((user) => canAssignTaskTo(currentUser, user.id));
 
   useEffect(() => {
     form.reset({
@@ -96,20 +106,26 @@ export function TaskForm({
   const onSubmit = form.handleSubmit((values) => {
     const payload = {
       title: values.title,
-      priority: values.priority,
       description: values.description || undefined,
       dueDate: values.dueDate || undefined,
       sprintId: values.sprintId || undefined,
-      assignedToId: values.assignedToId || undefined,
-      reviewerId: values.reviewerId || undefined,
-      storyPoints: values.storyPoints ? Number(values.storyPoints) : undefined,
-      estimatedHours: values.estimatedHours ? Number(values.estimatedHours) : undefined,
       comments: values.comments || undefined
     };
+    const metadata = canSetMetadata
+      ? {
+          priority: values.priority,
+          assignedToId: values.assignedToId || undefined,
+          reviewerId: values.reviewerId || undefined,
+          storyPoints: values.storyPoints ? Number(values.storyPoints) : undefined,
+          estimatedHours: values.estimatedHours ? Number(values.estimatedHours) : undefined
+        }
+      : {
+          assignedToId: values.assignedToId || undefined
+        };
 
     if (editingTask) {
       updateTask.mutate(
-        { id: editingTask.id, payload },
+        { id: editingTask.id, payload: { ...payload, ...metadata } },
         {
           onSuccess: () => {
             form.reset();
@@ -120,7 +136,7 @@ export function TaskForm({
       return;
     }
 
-    createTask.mutate(payload, {
+    createTask.mutate({ ...payload, ...metadata }, {
       onSuccess: () => {
         form.reset({
           title: "",
@@ -164,30 +180,36 @@ export function TaskForm({
         <textarea rows={3} {...form.register("comments")} />
       </label>
       <div className="form-grid">
-        <label>
-          Priority
-          <select {...form.register("priority")}>
-            <option value="LOW">Low</option>
-            <option value="MEDIUM">Medium</option>
-            <option value="HIGH">High</option>
-            <option value="URGENT">Urgent</option>
-          </select>
-        </label>
+        {canSetMetadata && (
+          <label>
+            Priority
+            <select {...form.register("priority")}>
+              <option value="LOW">Low</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="HIGH">High</option>
+              <option value="URGENT">Urgent</option>
+            </select>
+          </label>
+        )}
         <label>
           Due date
           <input type="date" {...form.register("dueDate")} />
         </label>
       </div>
-      <label>
-        Story points
-        <input min="0" step="1" type="number" {...form.register("storyPoints")} />
-        {form.formState.errors.storyPoints && <small>{form.formState.errors.storyPoints.message}</small>}
-      </label>
-      <label>
-        Estimated hours
-        <input min="0" step="0.25" type="number" {...form.register("estimatedHours")} />
-        {form.formState.errors.estimatedHours && <small>{form.formState.errors.estimatedHours.message}</small>}
-      </label>
+      {canSetMetadata && (
+        <>
+          <label>
+            Story points
+            <input min="0" step="1" type="number" {...form.register("storyPoints")} />
+            {form.formState.errors.storyPoints && <small>{form.formState.errors.storyPoints.message}</small>}
+          </label>
+          <label>
+            Estimated hours
+            <input min="0" step="0.25" type="number" {...form.register("estimatedHours")} />
+            {form.formState.errors.estimatedHours && <small>{form.formState.errors.estimatedHours.message}</small>}
+          </label>
+        </>
+      )}
       {lockSprint ? (
         <input type="hidden" {...form.register("sprintId")} />
       ) : (
@@ -207,24 +229,26 @@ export function TaskForm({
         Assignee
         <select {...form.register("assignedToId")}>
           <option value="">Unassigned</option>
-          {users.map((user) => (
+          {assigneeOptions.map((user) => (
             <option key={user.id} value={user.id}>
               {user.fullName || user.username}
             </option>
           ))}
         </select>
       </label>
-      <label>
-        Reviewer
-        <select {...form.register("reviewerId")}>
-          <option value="">No reviewer</option>
-          {reviewerOptions.map((user) => (
-            <option key={user.id} value={user.id}>
-              {user.fullName || user.username}
-            </option>
-          ))}
-        </select>
-      </label>
+      {canSetMetadata && (
+        <label>
+          Reviewer
+          <select {...form.register("reviewerId")}>
+            <option value="">No reviewer</option>
+            {reviewerOptions.map((user) => (
+              <option key={user.id} value={user.id}>
+                {user.fullName || user.username}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {errorMessage && <p className="form-error">{errorMessage}</p>}
       <button className="primary-button" type="submit" disabled={isSaving}>
         {editingTask ? <Save aria-hidden="true" /> : <Plus aria-hidden="true" />}

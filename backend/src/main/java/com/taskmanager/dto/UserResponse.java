@@ -2,6 +2,7 @@
 package com.taskmanager.dto;
 
 import com.taskmanager.entity.User;
+import com.taskmanager.entity.enums.UserRole;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -11,6 +12,7 @@ public record UserResponse(
         String email,
         String fullName,
         String avatarUrl,
+        UserRole role,
         boolean active,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
@@ -25,6 +27,7 @@ public record UserResponse(
                 user.getEmail(),
                 user.getFullName(),
                 user.getAvatarUrl(),
+                user.getRole(),
                 user.isActive(),
                 user.getCreatedAt(),
                 user.getUpdatedAt()

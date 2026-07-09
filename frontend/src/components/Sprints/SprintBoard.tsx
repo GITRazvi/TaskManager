@@ -1,19 +1,84 @@
+// File responsibility: Renders the sprint task board, filtered columns, and task detail modal.
 import { useMemo, useState } from "react";
 import { getApiErrorMessage } from "../../api/client";
 import { useSprintBoard } from "../../hooks/useSprints";
 import { useUpdateTaskStatus } from "../../hooks/useTasks";
 import type { Sprint, Task, TaskStatus, User } from "../../types";
+import { taskStatusLabels } from "../../utils/taskStatus";
 import { Loading } from "../Common/Loading";
 import { TaskCard } from "../Tasks/TaskCard";
 import { TaskDetails } from "../Tasks/TaskDetails";
+import type { SprintBoardFilterState } from "./SprintBoardFilters";
+import { unassignedValue } from "./SprintBoardFilters";
 
-const columns: Array<{ key: "todo" | "inProgress" | "done"; label: string; status: TaskStatus }> = [
-  { key: "todo", label: "To do", status: "TODO" },
-  { key: "inProgress", label: "In progress", status: "IN_PROGRESS" },
-  { key: "done", label: "Done", status: "DONE" }
+const columns: Array<{ key: "todo" | "inProgress" | "review" | "done"; label: string; status: TaskStatus }> = [
+  { key: "todo", label: taskStatusLabels.TODO, status: "TODO" },
+  { key: "inProgress", label: taskStatusLabels.IN_PROGRESS, status: "IN_PROGRESS" },
+  { key: "review", label: taskStatusLabels.REVIEW, status: "REVIEW" },
+  { key: "done", label: taskStatusLabels.DONE, status: "DONE" }
 ];
 
-export function SprintBoard({ sprintId, sprint, users }: { sprintId?: string; sprint?: Sprint; users: User[] }) {
+/**
+ * Checks whether a task user field satisfies a board user filter.
+ * taskUserId stores the task assignee/reviewer id; filterUserId stores the selected user id or unassigned marker.
+ */
+function matchesUserFilter(taskUserId: string | null | undefined, filterUserId: string | undefined) {
+  if (!filterUserId) {
+    return true;
+  }
+
+  if (filterUserId === unassignedValue) {
+    return !taskUserId;
+  }
+
+  return taskUserId === filterUserId;
+}
+
+/**
+ * Applies all board filters to one task.
+ * task stores the candidate task; filters stores status, priority, project, user, and due-date filter values.
+ */
+function taskMatchesFilters(task: Task, filters: SprintBoardFilterState) {
+  if (filters.status && task.status !== filters.status) {
+    return false;
+  }
+  if (filters.priority && (task.priority ?? "MEDIUM") !== filters.priority) {
+    return false;
+  }
+  if (filters.projectId && task.projectId !== filters.projectId) {
+    return false;
+  }
+  if (!matchesUserFilter(task.assignedToId, filters.assigneeId)) {
+    return false;
+  }
+  if (!matchesUserFilter(task.reviewerId, filters.reviewerId)) {
+    return false;
+  }
+  if (filters.dueFrom && (!task.dueDate || task.dueDate < filters.dueFrom)) {
+    return false;
+  }
+  if (filters.dueUntil && (!task.dueDate || task.dueDate > filters.dueUntil)) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Renders a drag-and-drop sprint board and opens task details.
+ * sprintId stores the selected sprint; sprint/users provide participant context; filters stores active board filters.
+ */
+export function SprintBoard({
+  sprintId,
+  sprint,
+  users,
+  filters = {}
+}: {
+  sprintId?: string;
+  sprint?: Sprint;
+  users: User[];
+  filters?: SprintBoardFilterState;
+}) {
   const board = useSprintBoard(sprintId);
   const updateStatus = useUpdateTaskStatus();
   const [draggedTask, setDraggedTask] = useState<{ id: string; status: TaskStatus } | null>(null);
@@ -51,11 +116,19 @@ export function SprintBoard({ sprintId, sprint, users }: { sprintId?: string; sp
     return <p className="form-error">{getApiErrorMessage(board.error)}</p>;
   }
 
+  const boardTasks = columns.flatMap((column) => (board.data?.[column.key] ?? []) as Task[]);
+  const visibleTaskCount = boardTasks.filter((task) => taskMatchesFilters(task, filters)).length;
+
   return (
     <>
+      <p className="board-results-summary">
+        Showing {visibleTaskCount} of {boardTasks.length} tasks
+      </p>
       <div className="board">
         {columns.map((column) => {
-          const tasks = (board.data?.[column.key] ?? []) as Task[];
+          const tasks = ((board.data?.[column.key] ?? []) as Task[]).filter((task) =>
+            taskMatchesFilters(task, filters)
+          );
           return (
             <section
               className={`board-column${dropTarget === column.status ? " board-column-drop-target" : ""}`}

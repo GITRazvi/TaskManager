@@ -2,9 +2,12 @@
 package com.taskmanager.service;
 
 import com.taskmanager.dto.ChangePasswordRequest;
+import com.taskmanager.dto.CreateUserRequest;
 import com.taskmanager.dto.UpdateUserRequest;
+import com.taskmanager.dto.UpdateUserRoleRequest;
 import com.taskmanager.dto.UserResponse;
 import com.taskmanager.entity.User;
+import com.taskmanager.entity.enums.UserRole;
 import com.taskmanager.exception.AppException;
 import com.taskmanager.exception.ForbiddenException;
 import com.taskmanager.exception.ResourceNotFoundException;
@@ -51,6 +54,30 @@ public class UserService {
     }
 
     /**
+     * Creates a user with an explicit role after confirming the current user is an administrator.
+     */
+    @Transactional
+    public UserResponse createUser(CreateUserRequest request, UserRole currentUserRole) {
+        ensureCanManageUsers(currentUserRole);
+        if (userRepository.existsByEmail(request.email())) {
+            throw new AppException(HttpStatus.CONFLICT, "EMAIL_ALREADY_EXISTS", "Email is already registered");
+        }
+        if (userRepository.existsByUsername(request.username())) {
+            throw new AppException(HttpStatus.CONFLICT, "USERNAME_ALREADY_EXISTS", "Username is already taken");
+        }
+
+        User user = new User();
+        user.setUsername(request.username());
+        user.setEmail(request.email());
+        user.setPasswordHash(passwordEncoder.encode(request.password()));
+        user.setFullName(request.fullName());
+        user.setRole(request.role());
+        user.setActive(true);
+
+        return UserResponse.from(userRepository.save(user));
+    }
+
+    /**
      * Returns a public profile after ensuring {@code requestedUserId} matches the authenticated {@code currentUserId}.
      */
     @Transactional(readOnly = true)
@@ -90,6 +117,35 @@ public class UserService {
     }
 
     /**
+     * Changes a user's role after confirming the current user is an administrator.
+     */
+    @Transactional
+    public UserResponse updateRole(
+            UUID requestedUserId,
+            UUID currentUserId,
+            UserRole currentUserRole,
+            UpdateUserRoleRequest request
+    ) {
+        ensureCanManageUsers(currentUserRole);
+        User user = getUserEntity(requestedUserId);
+        user.setRole(request.role());
+        return UserResponse.from(user);
+    }
+
+    /**
+     * Soft-deletes a user after confirming the current user is an administrator.
+     */
+    @Transactional
+    public void deleteUser(UUID requestedUserId, UUID currentUserId, UserRole currentUserRole) {
+        ensureCanManageUsers(currentUserRole);
+        if (requestedUserId.equals(currentUserId)) {
+            throw new AppException(HttpStatus.BAD_REQUEST, "CANNOT_DELETE_SELF", "You cannot delete your own account");
+        }
+        User user = getUserEntity(requestedUserId);
+        user.setActive(false);
+    }
+
+    /**
      * Changes the current user's password after matching the request current password against the stored hash.
      */
     @Transactional
@@ -110,6 +166,15 @@ public class UserService {
     private void ensureSelf(UUID requestedUserId, UUID currentUserId) {
         if (!requestedUserId.equals(currentUserId)) {
             throw new ForbiddenException("You can only access your own profile");
+        }
+    }
+
+    /**
+     * Ensures the supplied role has user-management privileges.
+     */
+    private void ensureCanManageUsers(UserRole role) {
+        if (!role.canManageUsers()) {
+            throw new ForbiddenException("Only admins can manage users and roles");
         }
     }
 }

@@ -6,7 +6,9 @@ import com.taskmanager.dto.ProjectResponse;
 import com.taskmanager.dto.ProjectUpdateRequest;
 import com.taskmanager.entity.Project;
 import com.taskmanager.entity.User;
+import com.taskmanager.entity.enums.UserRole;
 import com.taskmanager.exception.AppException;
+import com.taskmanager.exception.ForbiddenException;
 import com.taskmanager.exception.ResourceNotFoundException;
 import com.taskmanager.repository.ProjectRepository;
 import com.taskmanager.repository.UserRepository;
@@ -27,7 +29,8 @@ public class ProjectService {
     }
 
     @Transactional
-    public ProjectResponse createProject(ProjectCreateRequest request, UUID userId) {
+    public ProjectResponse createProject(ProjectCreateRequest request, UUID userId, UserRole userRole) {
+        ensureCanManageProjects(userRole);
         User user = getUser(userId);
 
         Project project = new Project();
@@ -51,7 +54,8 @@ public class ProjectService {
     }
 
     @Transactional
-    public ProjectResponse updateProject(UUID projectId, UUID userId, ProjectUpdateRequest request) {
+    public ProjectResponse updateProject(UUID projectId, UUID userId, UserRole userRole, ProjectUpdateRequest request) {
+        ensureCanManageProjects(userRole);
         Project project = getOwnedProject(projectId, userId);
 
         if (request.name() != null) {
@@ -67,6 +71,12 @@ public class ProjectService {
         return ProjectResponse.from(project);
     }
 
+    @Transactional
+    public void deleteProject(UUID projectId, UUID userId, UserRole userRole) {
+        ensureCanManageProjects(userRole);
+        projectRepository.delete(getOwnedProject(projectId, userId));
+    }
+
     private Project getOwnedProject(UUID projectId, UUID userId) {
         return projectRepository.findByIdAndUserId(projectId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
@@ -76,5 +86,11 @@ public class ProjectService {
         return userRepository.findById(userId)
                 .filter(User::isActive)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+    }
+
+    private void ensureCanManageProjects(UserRole role) {
+        if (!role.canManageProjects()) {
+            throw new ForbiddenException("Only admins and project managers can manage projects");
+        }
     }
 }

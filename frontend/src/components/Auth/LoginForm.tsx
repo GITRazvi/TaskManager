@@ -1,3 +1,4 @@
+// File responsibility: Renders and validates the login form and submits login credentials.
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LogIn } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -13,6 +14,9 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+/**
+ * Renders the login form and submits credentials through the auth mutation.
+ */
 export function LoginForm() {
   const login = useLogin();
   const navigate = useNavigate();

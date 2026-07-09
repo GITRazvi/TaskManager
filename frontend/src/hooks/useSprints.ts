@@ -1,7 +1,12 @@
+// File responsibility: Provides React Query hooks and cache invalidation for sprint workflows and sprint metrics.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as sprintsApi from "../api/sprints";
 import type { Sprint, SprintCreateRequest, SprintStatus, SprintUpdateRequest } from "../types";
 
+/**
+ * Inserts or replaces one sprint in a cached sprint list.
+ * sprints stores the current cache value; sprint stores the latest server version.
+ */
 function upsertSprint(sprints: Sprint[] | undefined, sprint: Sprint) {
   if (!sprints) {
     return [sprint];
@@ -15,6 +20,10 @@ function upsertSprint(sprints: Sprint[] | undefined, sprint: Sprint) {
   return sprints.map((currentSprint) => (currentSprint.id === sprint.id ? sprint : currentSprint));
 }
 
+/**
+ * Fetches sprints, optionally scoped by lifecycle status.
+ * status stores the requested filter value when provided.
+ */
 export function useSprints(status?: SprintStatus) {
   return useQuery({
     queryKey: ["sprints", status],
@@ -22,6 +31,9 @@ export function useSprints(status?: SprintStatus) {
   });
 }
 
+/**
+ * Creates a sprint and refreshes sprint list caches.
+ */
 export function useCreateSprint() {
   const queryClient = useQueryClient();
 
@@ -34,6 +46,9 @@ export function useCreateSprint() {
   });
 }
 
+/**
+ * Updates sprint fields and refreshes lists, boards, and sprint metrics.
+ */
 export function useUpdateSprint() {
   const queryClient = useQueryClient();
 
@@ -51,6 +66,9 @@ export function useUpdateSprint() {
   });
 }
 
+/**
+ * Deletes a sprint and refreshes sprint, board, stats, and task caches.
+ */
 export function useDeleteSprint() {
   const queryClient = useQueryClient();
 
@@ -65,6 +83,10 @@ export function useDeleteSprint() {
   });
 }
 
+/**
+ * Fetches board columns for a selected sprint.
+ * sprintId stores the selected sprint UUID and disables the query when missing.
+ */
 export function useSprintBoard(sprintId?: string) {
   return useQuery({
     queryKey: ["sprint-board", sprintId],
@@ -73,6 +95,10 @@ export function useSprintBoard(sprintId?: string) {
   });
 }
 
+/**
+ * Fetches metrics for a selected sprint.
+ * sprintId stores the selected sprint UUID and disables the query when missing.
+ */
 export function useSprintStats(sprintId?: string) {
   return useQuery({
     queryKey: ["sprint-stats", sprintId],
