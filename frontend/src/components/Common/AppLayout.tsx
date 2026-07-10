@@ -53,11 +53,11 @@ export function AppLayout() {
           )}
         </nav>
         <div className="sidebar-footer">
-          <div className="user-chip">
+          <NavLink className="user-chip" to="/profile" aria-label="Open profile">
             <UserCircle aria-hidden="true" />
             <span>{user?.fullName || user?.username || "Account"}</span>
             {user?.role && <span className="role-chip">{roleLabels[user.role]}</span>}
-          </div>
+          </NavLink>
           <ThemeToggle />
           <button className="icon-text-button" type="button" onClick={handleLogout}>
             <LogOut aria-hidden="true" />

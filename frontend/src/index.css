@@ -336,6 +336,15 @@ small,
   gap: 8px;
   flex-wrap: wrap;
   color: var(--color-sidebar-text);
+  border-radius: 6px;
+  padding: 8px;
+  text-decoration: none;
+}
+
+.user-chip.active,
+.user-chip:hover {
+  background: var(--color-sidebar-active);
+  color: var(--color-inverse);
 }
 
 .role-chip {
@@ -1290,6 +1299,219 @@ small,
   text-decoration: none;
 }
 
+.profile-header {
+  align-items: center;
+}
+
+.profile-identity,
+.profile-subtitle,
+.profile-overview,
+.profile-related-grid,
+.profile-activity-row {
+  display: flex;
+  align-items: center;
+}
+
+.profile-identity {
+  gap: 16px;
+  min-width: 0;
+}
+
+.profile-avatar {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-accent);
+}
+
+.profile-avatar svg {
+  width: 42px;
+  height: 42px;
+}
+
+.profile-subtitle {
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  color: var(--color-muted);
+  font-weight: 700;
+}
+
+.profile-subtitle span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.profile-subtitle svg {
+  width: 16px;
+  height: 16px;
+}
+
+.profile-overview {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.profile-detail {
+  display: grid;
+  gap: 6px;
+  min-width: 180px;
+  flex: 1;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.profile-detail span,
+.profile-list-section > h2 {
+  color: var(--color-muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.profile-detail strong {
+  overflow-wrap: anywhere;
+}
+
+.profile-metrics-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.profile-progress-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.profile-status-breakdown {
+  margin-top: 14px;
+}
+
+.profile-split {
+  grid-template-columns: minmax(0, 1fr) 420px;
+}
+
+.profile-task-list {
+  margin-top: 16px;
+}
+
+.profile-side-panel {
+  gap: 18px;
+}
+
+.profile-related-grid {
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.profile-related-grid .profile-detail {
+  min-width: 140px;
+}
+
+.profile-list-section {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-list-section > h2 {
+  margin: 0;
+}
+
+.profile-chip-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.profile-chip-list a,
+.profile-chip-list button,
+.profile-chip-list span {
+  max-width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+  font-weight: 750;
+  text-align: left;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.profile-chip-list button {
+  cursor: pointer;
+}
+
+.profile-chip-list a:hover,
+.profile-chip-list button:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.profile-activity-list {
+  display: grid;
+  gap: 10px;
+}
+
+.profile-activity-row {
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  background: var(--color-surface-muted);
+}
+
+.profile-activity-row svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: var(--color-accent);
+}
+
+.profile-activity-row div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.profile-activity-row strong,
+.profile-activity-row span,
+.profile-inline-link {
+  overflow-wrap: anywhere;
+}
+
+.profile-activity-row span,
+.profile-activity-row time {
+  color: var(--color-muted);
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.profile-activity-row time {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.profile-inline-link {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--color-accent);
+  font-weight: 750;
+  text-align: left;
+}
+
 .not-found {
   min-height: 100vh;
   display: grid;
@@ -1317,7 +1539,9 @@ small,
   .split-layout,
   .metrics-grid,
   .stats-grid,
-  .stats-visuals {
+  .stats-visuals,
+  .profile-metrics-grid,
+  .profile-progress-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1334,9 +1558,19 @@ small,
 
   .page-header,
   .section-heading,
-  .task-card-header {
+  .task-card-header,
+  .profile-header,
+  .profile-activity-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .profile-identity {
+    align-items: flex-start;
+  }
+
+  .profile-activity-row time {
+    margin-left: 0;
   }
 
   .filters,

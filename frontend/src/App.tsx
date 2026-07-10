@@ -8,6 +8,7 @@ import { useThemeStore } from "./store/themeStore";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { ProfilePage } from "./pages/ProfilePage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { SprintBoardPage } from "./pages/SprintBoardPage";
@@ -57,6 +58,7 @@ export default function App() {
           <Route path="tasks" element={<TasksPage />} />
           <Route path="projects" element={<ProjectsPage />} />
           <Route path="sprints" element={<SprintBoardPage />} />
+          <Route path="profile" element={<ProfilePage />} />
           <Route path="users" element={<UsersPage />} />
         </Route>
       </Route>
