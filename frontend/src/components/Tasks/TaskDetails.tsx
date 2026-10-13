@@ -22,8 +22,14 @@ import { getApiErrorMessage } from "../../api/client";
 import { downloadTaskCommentAttachment } from "../../api/tasks";
 import { useAddTaskComment, useDownloadTaskCommentAttachment, useUpdateTask, useUpdateTaskStatus } from "../../hooks/useTasks";
 import { useAuthStore } from "../../store/authStore";
-import type { Sprint, Task, TaskComment, TaskPriority, TaskStatus, User } from "../../types";
-import { canAssignTaskTo, canEditTask, canSetTaskMetadata } from "../../utils/permissions";
+import type { Project, Sprint, Task, TaskComment, TaskPriority, TaskStatus, User } from "../../types";
+import {
+  canAssignTaskToForRole,
+  canEditTaskForRole,
+  canSetTaskMetadataForRole,
+  canTransitionTaskStatusForRole,
+  getRoleForTask
+} from "../../utils/permissions";
 import { taskStatusLabels, taskStatusOptions } from "../../utils/taskStatus";
 
 const priorityLabels: Record<TaskPriority, string> = {
@@ -250,6 +256,7 @@ export function TaskDetails({
   reviewer,
   sprint,
   sprints = [],
+  projects = [],
   users = [],
   onClose,
   onEdit,
@@ -260,6 +267,7 @@ export function TaskDetails({
   reviewer?: User;
   sprint?: Sprint;
   sprints?: Sprint[];
+  projects?: Project[];
   users?: User[];
   onClose: () => void;
   onEdit?: () => void;
@@ -293,9 +301,13 @@ export function TaskDetails({
     [form.sprintId, sprint, sprints]
   );
   const reviewerOptions = selectedSprint?.participants?.length ? selectedSprint.participants : allUsers;
-  const canEditDetails = canEditTask(currentUser, task);
-  const canSetMetadata = canSetTaskMetadata(currentUser);
-  const assigneeOptions = allUsers.filter((user) => canAssignTaskTo(currentUser, user.id) || user.id === form.assignedToId);
+  const projectRole = getRoleForTask(task, projects, currentUser);
+  const canEditDetails = canEditTaskForRole(projectRole, currentUser, task);
+  const canSetMetadata = canSetTaskMetadataForRole(projectRole);
+  const canChangeStatus = canTransitionTaskStatusForRole(projectRole);
+  const assigneeOptions = allUsers.filter((user) =>
+    canAssignTaskToForRole(projectRole, currentUser?.id, user.id) || user.id === form.assignedToId
+  );
   const assigneeName = assignee?.fullName || assignee?.username || usersById.get(form.assignedToId)?.fullName || usersById.get(form.assignedToId)?.username || (form.assignedToId ? "Assigned user" : "Unassigned");
   const reviewerName = reviewer?.fullName || reviewer?.username || usersById.get(form.reviewerId)?.fullName || usersById.get(form.reviewerId)?.username || (form.reviewerId ? "Assigned reviewer" : "No reviewer");
   const projectId = selectedSprint?.projectId || task.projectId || sprint?.projectId;
@@ -317,7 +329,7 @@ export function TaskDetails({
     !updateStatus.isLoading &&
     !storyPointsInvalid &&
     !estimatedHoursInvalid &&
-    (canEditDetails || statusChanged || (canSetMetadata && metadataChanged));
+    (canEditDetails || (canChangeStatus && statusChanged) || (canSetMetadata && metadataChanged));
   const comments = Array.isArray(task.comments) ? task.comments : [];
   const statusHistory = Array.isArray(task.statusHistory) ? task.statusHistory : [];
   const canAddComment = (newComment.trim().length > 0 || selectedAttachment !== null) && !addComment.isLoading;
@@ -363,7 +375,7 @@ export function TaskDetails({
       : {};
 
     if (!canEditDetails) {
-      if (!statusChanged && (!canSetMetadata || !metadataChanged)) {
+      if ((!canChangeStatus || !statusChanged) && (!canSetMetadata || !metadataChanged)) {
         return;
       }
 
@@ -371,7 +383,7 @@ export function TaskDetails({
         {
           id: task.id,
           payload: {
-            ...(statusChanged ? { status: form.status } : {}),
+            ...(canChangeStatus && statusChanged ? { status: form.status } : {}),
             ...metadataPayload
           }
         },
@@ -391,7 +403,9 @@ export function TaskDetails({
         payload: {
           status: form.status,
           dueDate: form.dueDate || undefined,
-          assignedToId: canAssignTaskTo(currentUser, form.assignedToId) ? form.assignedToId || undefined : undefined,
+          assignedToId: canAssignTaskToForRole(projectRole, currentUser?.id, form.assignedToId)
+            ? form.assignedToId || undefined
+            : undefined,
           ...(canSetMetadata
             ? {
                 sprintId: form.sprintId || undefined,
@@ -528,6 +542,7 @@ export function TaskDetails({
               <select
                 aria-label={`Status for ${task.title}`}
                 value={form.status}
+                disabled={!canChangeStatus}
                 onChange={(event) => updateField("status", event.target.value as TaskStatus)}
               >
                 {taskStatusOptions.map((status) => (

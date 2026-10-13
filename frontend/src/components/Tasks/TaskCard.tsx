@@ -16,6 +16,7 @@ export function TaskCard({
   onDragStart,
   onDragEnd,
   onStatusChange,
+  canChangeStatus = true,
   onOpen,
   onEdit,
   onDelete
@@ -27,6 +28,7 @@ export function TaskCard({
   onDragStart?: DragEventHandler<HTMLElement>;
   onDragEnd?: DragEventHandler<HTMLElement>;
   onStatusChange: (status: TaskStatus) => void;
+  canChangeStatus?: boolean;
   onOpen?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
@@ -93,6 +95,7 @@ export function TaskCard({
         <select
           aria-label={`Status for ${task.title}`}
           value={task.status}
+          disabled={!canChangeStatus}
           onChange={(event) => onStatusChange(event.target.value as TaskStatus)}
         >
           {taskStatusOptions.map((status) => (

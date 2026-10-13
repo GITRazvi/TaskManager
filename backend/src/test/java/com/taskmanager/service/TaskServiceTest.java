@@ -19,6 +19,7 @@ import com.taskmanager.entity.enums.TaskStatus;
 import com.taskmanager.entity.enums.UserRole;
 import com.taskmanager.exception.AppException;
 import com.taskmanager.exception.ForbiddenException;
+import com.taskmanager.repository.ProjectMemberRepository;
 import com.taskmanager.repository.SprintRepository;
 import com.taskmanager.repository.TaskCommentRepository;
 import com.taskmanager.repository.TaskRepository;
@@ -53,6 +54,9 @@ class TaskServiceTest {
     @Mock
     private TaskStatusHistoryRepository taskStatusHistoryRepository;
 
+    @Mock
+    private ProjectMemberRepository projectMemberRepository;
+
     private TaskService taskService;
 
     /**
@@ -65,7 +69,8 @@ class TaskServiceTest {
                 userRepository,
                 sprintRepository,
                 taskCommentRepository,
-                taskStatusHistoryRepository
+                taskStatusHistoryRepository,
+                projectMemberRepository
         );
     }
 
@@ -96,6 +101,7 @@ class TaskServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(userRepository.findById(assigneeId)).thenReturn(Optional.of(assignee));
         when(sprintRepository.findAccessibleByIdAndUserId(sprintId, userId)).thenReturn(Optional.of(sprint));
+        when(projectMemberRepository.existsByProjectIdAndUserId(sprint.getProject().getId(), assigneeId)).thenReturn(true);
         when(taskRepository.save(any(Task.class))).thenAnswer(invocation -> {
             Task task = invocation.getArgument(0);
             task.setId(UUID.randomUUID());
@@ -158,6 +164,7 @@ class TaskServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(owner));
         when(userRepository.findById(reviewerId)).thenReturn(Optional.of(reviewer));
         when(sprintRepository.findAccessibleByIdAndUserId(sprintId, userId)).thenReturn(Optional.of(sprint));
+        when(projectMemberRepository.existsByProjectIdAndUserId(sprint.getProject().getId(), reviewerId)).thenReturn(true);
         when(taskRepository.save(any(Task.class))).thenAnswer(invocation -> {
             Task task = invocation.getArgument(0);
             task.setId(UUID.randomUUID());
@@ -201,7 +208,7 @@ class TaskServiceTest {
 
         assertThatThrownBy(() -> taskService.createTask(request, userId, UserRole.PROJECT_MANAGER))
                 .isInstanceOf(AppException.class)
-                .hasMessage("Task reviewer must belong to the same sprint")
+                .hasMessage("Task reviewer must belong to the same project")
                 .extracting("errorCode")
                 .isEqualTo("INVALID_TASK_REVIEWER");
 
@@ -326,6 +333,7 @@ class TaskServiceTest {
         );
         when(taskRepository.findVisibleByIdAndUserId(taskId, userId)).thenReturn(Optional.of(task));
         when(userRepository.findById(reviewerId)).thenReturn(Optional.of(reviewer));
+        when(projectMemberRepository.existsByProjectIdAndUserId(sprint.getProject().getId(), reviewerId)).thenReturn(true);
 
         var response = taskService.updateTask(taskId, userId, UserRole.DEVELOPER, request);
 
@@ -389,7 +397,7 @@ class TaskServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(task.getUser()));
         when(taskStatusHistoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        var response = taskService.updateStatus(taskId, userId, TaskStatus.REVIEW);
+        var response = taskService.updateStatus(taskId, userId, UserRole.QA_TESTER, TaskStatus.REVIEW);
 
         assertThat(task.getStatus()).isEqualTo(TaskStatus.REVIEW);
         assertThat(response.status()).isEqualTo(TaskStatus.REVIEW);
@@ -488,7 +496,55 @@ class TaskServiceTest {
 
         assertThatThrownBy(() -> taskService.createTask(request, userId, UserRole.DEVELOPER))
                 .isInstanceOf(ForbiddenException.class)
-                .hasMessage("Developers can only assign tasks to themselves");
+                .hasMessage("This role can only assign tasks to themselves");
+
+        verify(taskRepository, never()).save(any(Task.class));
+    }
+
+    @Test
+    void createTaskRejectsProductOwnerAssigningAnotherUser() {
+        UUID userId = UUID.randomUUID();
+        UUID assigneeId = UUID.randomUUID();
+        User user = activeUser(userId);
+        TaskCreateRequest request = new TaskCreateRequest(
+                "Assign from backlog",
+                null,
+                TaskPriority.HIGH,
+                null,
+                null,
+                assigneeId,
+                null,
+                5,
+                null,
+                null
+        );
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> taskService.createTask(request, userId, UserRole.PRODUCT_OWNER))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessage("This role can only assign tasks to themselves");
+
+        verify(taskRepository, never()).save(any(Task.class));
+    }
+
+    @Test
+    void createTaskRejectsViewer() {
+        TaskCreateRequest request = new TaskCreateRequest(
+                "Read only",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+
+        assertThatThrownBy(() -> taskService.createTask(request, UUID.randomUUID(), UserRole.VIEWER))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessage("Viewers cannot create tasks");
 
         verify(taskRepository, never()).save(any(Task.class));
     }
@@ -519,7 +575,7 @@ class TaskServiceTest {
 
         assertThatThrownBy(() -> taskService.updateTask(taskId, userId, UserRole.DEVELOPER, request))
                 .isInstanceOf(ForbiddenException.class)
-                .hasMessage("Developers can only edit status and task metadata on visible tasks they did not create");
+                .hasMessage("This role can only edit status and task metadata on visible tasks they did not create");
     }
 
     /**
@@ -535,10 +591,24 @@ class TaskServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(task.getUser()));
         when(taskStatusHistoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-        var response = taskService.updateStatus(taskId, userId, TaskStatus.TODO);
+        var response = taskService.updateStatus(taskId, userId, UserRole.DEVELOPER, TaskStatus.TODO);
 
         assertThat(task.getStatus()).isEqualTo(TaskStatus.TODO);
         assertThat(response.status()).isEqualTo(TaskStatus.TODO);
+    }
+
+    @Test
+    void updateStatusRejectsViewer() {
+        assertThatThrownBy(() -> taskService.updateStatus(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UserRole.VIEWER,
+                TaskStatus.DONE
+        ))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessage("Viewers cannot transition task status");
+
+        verify(taskRepository, never()).findVisibleByIdAndUserId(any(UUID.class), any(UUID.class));
     }
 
     /**
@@ -567,6 +637,7 @@ class TaskServiceTest {
         Sprint sprint = new Sprint();
         sprint.setId(sprintId);
         sprint.setUser(user);
+        sprint.setProject(project(UUID.randomUUID(), user, "Project 1"));
         sprint.setName("Sprint 1");
         sprint.setStartDate(LocalDate.now());
         sprint.setEndDate(LocalDate.now().plusWeeks(2));

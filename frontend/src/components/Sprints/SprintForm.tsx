@@ -51,6 +51,8 @@ export function SprintForm({
         name: editingSprint.projectName,
         description: null,
         sprintCount: 0,
+        role: null,
+        members: [],
         createdAt: "",
         updatedAt: ""
       },
@@ -68,6 +70,12 @@ export function SprintForm({
       status: "PLANNING"
     }
   });
+  const watchedProjectId = form.watch("projectId");
+  const selectedProject = projectOptions.find((project) => project.id === watchedProjectId);
+  const projectMemberUserIds = new Set(selectedProject?.members.map((member) => member.userId) ?? []);
+  const memberUsers = selectedProject
+    ? users.filter((user) => projectMemberUserIds.has(user.id) || editingSprint?.userId === user.id)
+    : [];
 
   useEffect(() => {
     form.reset({
@@ -196,7 +204,7 @@ export function SprintForm({
       <label>
         Members
         <div className="member-picker">
-          {users.map((user) => {
+          {memberUsers.map((user) => {
             const isOwner = editingSprint?.userId === user.id;
             return (
               <label className="member-option" key={user.id}>
@@ -213,7 +221,7 @@ export function SprintForm({
               </label>
             );
           })}
-          {users.length === 0 && <p className="empty-state">No users available</p>}
+          {memberUsers.length === 0 && <p className="empty-state">Add project members before selecting sprint members.</p>}
         </div>
       </label>
       {errorMessage && <p className="form-error">{errorMessage}</p>}

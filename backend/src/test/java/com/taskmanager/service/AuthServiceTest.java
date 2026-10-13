@@ -73,7 +73,7 @@ class AuthServiceTest {
         assertThat(response.tokenType()).isEqualTo("Bearer");
         assertThat(response.expiresIn()).isEqualTo(900000L);
         assertThat(response.user().email()).isEqualTo(request.email());
-        assertThat(response.user().role()).isEqualTo(UserRole.DEVELOPER);
+        assertThat(response.user().role()).isNull();
         assertThat(response.user().active()).isTrue();
         assertThat(jwtTokenProvider.isValid(response.accessToken())).isTrue();
         assertThat(jwtTokenProvider.getTokenType(response.accessToken())).isEqualTo("access");
@@ -87,7 +87,7 @@ class AuthServiceTest {
         assertThat(savedUser.getEmail()).isEqualTo(request.email());
         assertThat(savedUser.getPasswordHash()).isEqualTo("encoded-password");
         assertThat(savedUser.getFullName()).isEqualTo(request.fullName());
-        assertThat(savedUser.getRole()).isEqualTo(UserRole.DEVELOPER);
+        assertThat(savedUser.getRole()).isNull();
         assertThat(savedUser.isActive()).isTrue();
     }
 

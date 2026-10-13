@@ -115,7 +115,7 @@ public class TaskController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.success(
-                        taskService.createTask(request, principal.getId(), principal.getRole()),
+                        taskService.createTask(request, principal.getId()),
                         "Task created successfully"
                 ));
     }
@@ -130,7 +130,7 @@ public class TaskController {
             @Valid @RequestBody TaskUpdateRequest request
     ) {
         return ResponseEntity.ok(ApiResponse.success(
-                taskService.updateTask(id, principal.getId(), principal.getRole(), request),
+                taskService.updateTask(id, principal.getId(), request),
                 "Task updated successfully"
         ));
     }
@@ -202,7 +202,7 @@ public class TaskController {
             @PathVariable UUID id,
             @AuthenticationPrincipal UserPrincipal principal
     ) {
-        taskService.deleteTask(id, principal.getId(), principal.getRole());
+        taskService.deleteTask(id, principal.getId());
         return ResponseEntity.noContent().build();
     }
 

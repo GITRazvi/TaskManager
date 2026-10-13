@@ -3,7 +3,8 @@ import { useMemo, useState } from "react";
 import { getApiErrorMessage } from "../../api/client";
 import { useSprintBoard } from "../../hooks/useSprints";
 import { useUpdateTaskStatus } from "../../hooks/useTasks";
-import type { Sprint, Task, TaskStatus, User } from "../../types";
+import type { Project, Sprint, Task, TaskStatus, User } from "../../types";
+import { canTransitionTaskStatusForRole, getRoleForSprint } from "../../utils/permissions";
 import { taskStatusLabels } from "../../utils/taskStatus";
 import { Loading } from "../Common/Loading";
 import { TaskCard } from "../Tasks/TaskCard";
@@ -71,16 +72,19 @@ function taskMatchesFilters(task: Task, filters: SprintBoardFilterState) {
 export function SprintBoard({
   sprintId,
   sprint,
+  projects = [],
   users,
   filters = {}
 }: {
   sprintId?: string;
   sprint?: Sprint;
+  projects?: Project[];
   users: User[];
   filters?: SprintBoardFilterState;
 }) {
   const board = useSprintBoard(sprintId);
   const updateStatus = useUpdateTaskStatus();
+  const canChangeStatus = canTransitionTaskStatusForRole(getRoleForSprint(sprint, projects));
   const [draggedTask, setDraggedTask] = useState<{ id: string; status: TaskStatus } | null>(null);
   const [dropTarget, setDropTarget] = useState<TaskStatus | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -93,7 +97,7 @@ export function SprintBoard({
   }, [sprint, users]);
 
   const handleDrop = (status: TaskStatus) => {
-    if (!draggedTask || draggedTask.status === status || updateStatus.isLoading) {
+    if (!canChangeStatus || !draggedTask || draggedTask.status === status || updateStatus.isLoading) {
       setDraggedTask(null);
       setDropTarget(null);
       return;
@@ -161,8 +165,9 @@ export function SprintBoard({
                     key={task.id}
                     task={task}
                     assignee={task.assignedToId ? usersById.get(task.assignedToId) : undefined}
-                    draggable
+                    draggable={canChangeStatus}
                     isDragging={draggedTask?.id === task.id}
+                    canChangeStatus={canChangeStatus}
                     onOpen={() => setSelectedTask(task)}
                     onDragStart={(event) => {
                       event.dataTransfer.effectAllowed = "move";
@@ -189,6 +194,7 @@ export function SprintBoard({
           reviewer={selectedTask.reviewerId ? usersById.get(selectedTask.reviewerId) : undefined}
           sprint={sprint}
           sprints={sprint ? [sprint] : []}
+          projects={projects}
           users={users}
           onClose={() => setSelectedTask(null)}
           onTaskUpdated={setSelectedTask}

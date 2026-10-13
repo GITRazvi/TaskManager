@@ -1,75 +1,76 @@
-// File responsibility: Centralizes frontend permission checks for role-based UI controls and task assignment rules.
-import type { Task, User, UserRole } from "../types";
+// File responsibility: Centralizes frontend permission checks for project-scoped roles.
+import type { Project, ProjectRole, Sprint, Task, User } from "../types";
 
-export const roleLabels: Record<UserRole, string> = {
-  ADMIN: "Admin",
+export const roleLabels: Record<ProjectRole, string> = {
   PROJECT_MANAGER: "Project Manager",
-  DEVELOPER: "Developer"
+  DEVELOPER: "Developer",
+  QA_TESTER: "QA / Tester",
+  PRODUCT_OWNER: "Product Owner",
+  SCRUM_MASTER: "Scrum Master",
+  VIEWER: "Viewer / Stakeholder"
 };
 
-/**
- * Returns the user's role, defaulting anonymous or missing users to developer-level permissions.
- * user stores the current authenticated user or a role-only projection.
- */
-export function getRole(user?: Pick<User, "role"> | null): UserRole {
-  return user?.role ?? "DEVELOPER";
+export const projectRoles: ProjectRole[] = [
+  "PROJECT_MANAGER",
+  "DEVELOPER",
+  "QA_TESTER",
+  "PRODUCT_OWNER",
+  "SCRUM_MASTER",
+  "VIEWER"
+];
+
+export function getProjectRole(project?: Pick<Project, "role"> | null): ProjectRole | null {
+  return project?.role ?? null;
 }
 
-/**
- * Checks whether the user can create, update, or delete user accounts.
- * user stores the current authenticated user or a role-only projection.
- */
-export function canManageUsers(user?: Pick<User, "role"> | null) {
-  return getRole(user) === "ADMIN";
-}
-
-/**
- * Checks whether the user can manage project and sprint planning data.
- * user stores the current authenticated user or a role-only projection.
- */
-export function canManageProjects(user?: Pick<User, "role"> | null) {
-  return getRole(user) === "ADMIN" || getRole(user) === "PROJECT_MANAGER";
-}
-
-/**
- * Checks whether the user can manage sprints.
- * user stores the current authenticated user or a role-only projection.
- */
-export function canManageSprints(user?: Pick<User, "role"> | null) {
-  return canManageProjects(user);
-}
-
-/**
- * Checks whether the user can edit all tasks they can see, regardless of ownership.
- * user stores the current authenticated user or a role-only projection.
- */
-export function canEditAnyVisibleTask(user?: Pick<User, "role"> | null) {
-  return getRole(user) === "ADMIN" || getRole(user) === "PROJECT_MANAGER";
-}
-
-/**
- * Checks whether the user can edit the full task body.
- * user stores identity and role; task stores ownership data used for developer-owned task edits.
- */
-export function canEditTask(user: Pick<User, "id" | "role"> | null | undefined, task: Task) {
-  return Boolean(user && (canEditAnyVisibleTask(user) || task.userId === user.id));
-}
-
-/**
- * Checks whether metadata controls should be enabled.
- * user stores the current signed-in user; any authenticated role may edit reviewer, points, priority, and estimates.
- */
-export function canSetTaskMetadata(user?: Pick<User, "role"> | null) {
-  return Boolean(user);
-}
-
-/**
- * Checks whether the user can assign work to the target user.
- * user stores the acting user's id/role; targetUserId stores the assignee being selected, if any.
- */
-export function canAssignTaskTo(user: Pick<User, "id" | "role"> | null | undefined, targetUserId?: string) {
-  if (!user) {
-    return false;
+export function getRoleForSprint(
+  sprint: Pick<Sprint, "projectId"> | null | undefined,
+  projects: Pick<Project, "id" | "role">[]
+): ProjectRole | null {
+  if (!sprint) {
+    return null;
   }
-  return canEditAnyVisibleTask(user) || !targetUserId || targetUserId === user.id;
+  return projects.find((project) => project.id === sprint.projectId)?.role ?? null;
+}
+
+export function getRoleForTask(
+  task: Pick<Task, "projectId" | "userId">,
+  projects: Pick<Project, "id" | "role">[],
+  user?: Pick<User, "id"> | null
+): ProjectRole | null {
+  if (!task.projectId) {
+    return task.userId === user?.id ? "DEVELOPER" : null;
+  }
+  return projects.find((project) => project.id === task.projectId)?.role ?? null;
+}
+
+export function canManageProject(project?: Pick<Project, "role"> | null) {
+  return getProjectRole(project) === "PROJECT_MANAGER";
+}
+
+export function canManageSprintsForRole(role?: ProjectRole | null) {
+  return role === "PROJECT_MANAGER" || role === "SCRUM_MASTER";
+}
+
+export function canCreateTasksForRole(role?: ProjectRole | null) {
+  return Boolean(role && role !== "VIEWER");
+}
+
+export function canTransitionTaskStatusForRole(role?: ProjectRole | null) {
+  return Boolean(role && role !== "VIEWER");
+}
+
+export function canEditTaskForRole(role: ProjectRole | null | undefined, user: Pick<User, "id"> | null | undefined, task: Task) {
+  return Boolean(role && role !== "VIEWER" && (role === "PROJECT_MANAGER" || task.userId === user?.id));
+}
+
+export function canSetTaskMetadataForRole(role?: ProjectRole | null) {
+  return Boolean(role && role !== "VIEWER");
+}
+
+export function canAssignTaskToForRole(role: ProjectRole | null | undefined, userId?: string, targetUserId?: string) {
+  return role === "PROJECT_MANAGER" ||
+    role === "SCRUM_MASTER" ||
+    !targetUserId ||
+    targetUserId === userId;
 }

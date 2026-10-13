@@ -17,13 +17,15 @@ public interface SprintRepository extends JpaRepository<Sprint, UUID> {
     List<Sprint> findAllByUserId(UUID userId);
 
     /**
-     * Finds every sprint visible to {@code userId}, either by ownership or sprint membership.
+     * Finds every sprint visible to {@code userId}, either by project membership or sprint membership.
      */
     @Query("""
             select distinct sprint
             from Sprint sprint
+            join sprint.project project
+            left join project.members projectMember
             left join sprint.participants participant
-            where sprint.user.id = :userId or participant.id = :userId
+            where projectMember.user.id = :userId or participant.id = :userId
             """)
     List<Sprint> findAllAccessibleByUserId(@Param("userId") UUID userId);
 
@@ -38,8 +40,10 @@ public interface SprintRepository extends JpaRepository<Sprint, UUID> {
     @Query("""
             select distinct sprint
             from Sprint sprint
+            join sprint.project project
+            left join project.members projectMember
             left join sprint.participants participant
-            where (sprint.user.id = :userId or participant.id = :userId)
+            where (projectMember.user.id = :userId or participant.id = :userId)
               and sprint.status = :status
             """)
     List<Sprint> findAllAccessibleByUserIdAndStatus(
@@ -58,9 +62,11 @@ public interface SprintRepository extends JpaRepository<Sprint, UUID> {
     @Query("""
             select distinct sprint
             from Sprint sprint
+            join sprint.project project
+            left join project.members projectMember
             left join sprint.participants participant
             where sprint.id = :id
-              and (sprint.user.id = :userId or participant.id = :userId)
+              and (projectMember.user.id = :userId or participant.id = :userId)
             """)
     Optional<Sprint> findAccessibleByIdAndUserId(@Param("id") UUID id, @Param("userId") UUID userId);
 }

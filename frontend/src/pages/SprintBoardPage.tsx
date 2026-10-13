@@ -10,8 +10,7 @@ import { TaskForm } from "../components/Tasks/TaskForm";
 import { useProjects } from "../hooks/useProjects";
 import { useDeleteSprint, useSprints } from "../hooks/useSprints";
 import { useUsers } from "../hooks/useUsers";
-import { useAuthStore } from "../store/authStore";
-import { canManageSprints } from "../utils/permissions";
+import { canCreateTasksForRole, canManageSprintsForRole, getRoleForSprint } from "../utils/permissions";
 
 type PanelMode = "sprint" | "edit" | "task" | null;
 
@@ -25,18 +24,19 @@ export function SprintBoardPage() {
   const projects = useProjects();
   const deleteSprint = useDeleteSprint();
   const users = useUsers();
-  const currentUser = useAuthStore((state) => state.user);
-  const canManageSprint = canManageSprints(currentUser);
   const initialSprintId = searchParams.get("sprint") ?? undefined;
   const [selectedSprintId, setSelectedSprintId] = useState<string | undefined>(initialSprintId);
-  const [activePanel, setActivePanel] = useState<PanelMode>(initialSprintId ? null : "sprint");
+  const [activePanel, setActivePanel] = useState<PanelMode>(null);
 
   const selectedSprint = useMemo(
     () => sprints.data?.find((sprint) => sprint.id === selectedSprintId),
     [selectedSprintId, sprints.data]
   );
-  const isSprintOwner = Boolean(selectedSprint && currentUser?.id === selectedSprint.userId);
-  const canDeleteSelectedSprint = canManageSprint && isSprintOwner;
+  const selectedProjectRole = getRoleForSprint(selectedSprint, projects.data ?? []);
+  const canManageSprint = canManageSprintsForRole(selectedProjectRole);
+  const canCreateTask = canCreateTasksForRole(selectedProjectRole);
+  const canCreateAnySprint = (projects.data ?? []).some((project) => canManageSprintsForRole(project.role));
+  const canDeleteSelectedSprint = canManageSprint;
 
   useEffect(() => {
     if (!sprints.data || sprints.isFetching || activePanel === "sprint") {
@@ -61,6 +61,9 @@ export function SprintBoardPage() {
   };
 
   const startNewSprint = () => {
+    if (!canCreateAnySprint) {
+      return;
+    }
     setActivePanel("sprint");
     setSelectedSprintId(undefined);
     setSearchParams({});
@@ -117,7 +120,7 @@ export function SprintBoardPage() {
               </option>
             ))}
           </select>
-          <button className="secondary-button" type="button" onClick={startNewSprint}>
+          <button className="secondary-button" type="button" disabled={!canCreateAnySprint} onClick={startNewSprint}>
             <Plus aria-hidden="true" />
             Create sprint
           </button>
@@ -150,7 +153,7 @@ export function SprintBoardPage() {
               <button
                 className="icon-button"
                 type="button"
-                disabled={!selectedSprint}
+                disabled={!selectedSprint || !canCreateTask}
                 onClick={() => setActivePanel("task")}
                 aria-label="Create task in selected sprint"
                 title="Create task"
@@ -160,7 +163,7 @@ export function SprintBoardPage() {
               <button
                 className="icon-button"
                 type="button"
-                disabled={!selectedSprint}
+                disabled={!selectedSprint || !canManageSprint}
                 onClick={() => {
                   if (selectedSprint) {
                     setActivePanel("edit");
@@ -174,7 +177,12 @@ export function SprintBoardPage() {
             </div>
           </div>
           <SprintStats sprintId={selectedSprintId} />
-          <SprintBoard sprintId={selectedSprintId} sprint={selectedSprint} users={users.data ?? []} />
+          <SprintBoard
+            sprintId={selectedSprintId}
+            sprint={selectedSprint}
+            projects={projects.data ?? []}
+            users={users.data ?? []}
+          />
         </section>
         {activePanel && (
           <aside className="side-panel">
@@ -188,6 +196,7 @@ export function SprintBoardPage() {
               <TaskForm
                 key={selectedSprintId}
                 sprints={sprints.data ?? []}
+                projects={projects.data ?? []}
                 users={users.data ?? []}
                 defaultSprintId={selectedSprintId}
                 lockSprint

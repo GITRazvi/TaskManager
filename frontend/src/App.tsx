@@ -13,7 +13,6 @@ import { RegisterPage } from "./pages/RegisterPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { SprintBoardPage } from "./pages/SprintBoardPage";
 import { TasksPage } from "./pages/TasksPage";
-import { UsersPage } from "./pages/UsersPage";
 
 /**
  * Blocks authenticated users from pages such as login and register.
@@ -59,7 +58,6 @@ export default function App() {
           <Route path="projects" element={<ProjectsPage />} />
           <Route path="sprints" element={<SprintBoardPage />} />
           <Route path="profile" element={<ProfilePage />} />
-          <Route path="users" element={<UsersPage />} />
         </Route>
       </Route>
       <Route path="*" element={<NotFoundPage />} />

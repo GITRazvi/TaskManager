@@ -2,7 +2,21 @@
 export type TaskStatus = "TODO" | "IN_PROGRESS" | "REVIEW" | "DONE";
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export type SprintStatus = "PLANNING" | "ACTIVE" | "COMPLETED" | "ARCHIVED";
-export type UserRole = "ADMIN" | "PROJECT_MANAGER" | "DEVELOPER";
+export type ProjectRole =
+  | "PROJECT_MANAGER"
+  | "DEVELOPER"
+  | "QA_TESTER"
+  | "PRODUCT_OWNER"
+  | "SCRUM_MASTER"
+  | "VIEWER";
+export type UserRole =
+  | "ADMIN"
+  | "PROJECT_MANAGER"
+  | "DEVELOPER"
+  | "QA_TESTER"
+  | "PRODUCT_OWNER"
+  | "SCRUM_MASTER"
+  | "VIEWER";
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -18,7 +32,7 @@ export interface User {
   email: string;
   fullName?: string | null;
   avatarUrl?: string | null;
-  role: UserRole;
+  role?: UserRole | null;
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -156,6 +170,21 @@ export interface Project {
   name: string;
   description?: string | null;
   sprintCount: number;
+  role?: ProjectRole | null;
+  members: ProjectMember[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectMember {
+  id: string;
+  projectId: string;
+  userId: string;
+  username: string;
+  email: string;
+  fullName?: string | null;
+  avatarUrl?: string | null;
+  role: ProjectRole;
   createdAt: string;
   updatedAt: string;
 }
@@ -166,6 +195,15 @@ export interface ProjectCreateRequest {
 }
 
 export type ProjectUpdateRequest = Partial<ProjectCreateRequest>;
+
+export interface ProjectMemberCreateRequest {
+  userIdentifier: string;
+  role: ProjectRole;
+}
+
+export interface ProjectMemberRoleUpdateRequest {
+  role: ProjectRole;
+}
 
 export interface Sprint {
   id: string;

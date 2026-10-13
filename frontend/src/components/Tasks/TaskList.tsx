@@ -2,7 +2,9 @@
 import { useMemo, useState } from "react";
 import { getApiErrorMessage } from "../../api/client";
 import { useTasks, useUpdateTaskStatus } from "../../hooks/useTasks";
-import type { Sprint, Task, TaskFilters as Filters, User } from "../../types";
+import { useAuthStore } from "../../store/authStore";
+import type { Project, Sprint, Task, TaskFilters as Filters, User } from "../../types";
+import { canTransitionTaskStatusForRole, getRoleForTask } from "../../utils/permissions";
 import { Loading } from "../Common/Loading";
 import { TaskCard } from "./TaskCard";
 import { TaskDetails } from "./TaskDetails";
@@ -12,9 +14,20 @@ import { TaskFilters } from "./TaskFilters";
  * Renders a paginated task list with filters, task actions, and detail/edit modals.
  * sprints and users store selector context; assignedToId stores an optional forced assignee filter.
  */
-export function TaskList({ sprints, users, assignedToId }: { sprints: Sprint[]; users: User[]; assignedToId?: string }) {
+export function TaskList({
+  sprints,
+  projects,
+  users,
+  assignedToId
+}: {
+  sprints: Sprint[];
+  projects: Project[];
+  users: User[];
+  assignedToId?: string;
+}) {
   const [filters, setFilters] = useState<Filters>({ page: 0, size: 20 });
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const currentUser = useAuthStore((state) => state.user);
   const tasks = useTasks({ ...filters, assignedToId }, { enabled: assignedToId === undefined || Boolean(assignedToId) });
   const updateStatus = useUpdateTaskStatus();
   const usersById = useMemo(() => {
@@ -41,15 +54,19 @@ export function TaskList({ sprints, users, assignedToId }: { sprints: Sprint[]; 
       {tasks.isError && <p className="form-error">{getApiErrorMessage(tasks.error)}</p>}
       {tasks.data?.tasks.length === 0 && <p className="empty-state">No tasks match the current view.</p>}
       <div className="task-list">
-        {tasks.data?.tasks.map((task) => (
-          <TaskCard
-            key={task.id}
-            task={task}
-            assignee={task.assignedToId ? usersById.get(task.assignedToId) : undefined}
-            onOpen={() => setSelectedTask(task)}
-            onStatusChange={(status) => updateStatus.mutate({ id: task.id, status })}
-          />
-        ))}
+        {tasks.data?.tasks.map((task) => {
+          const taskRole = getRoleForTask(task, projects, currentUser);
+          return (
+            <TaskCard
+              key={task.id}
+              task={task}
+              assignee={task.assignedToId ? usersById.get(task.assignedToId) : undefined}
+              canChangeStatus={canTransitionTaskStatusForRole(taskRole)}
+              onOpen={() => setSelectedTask(task)}
+              onStatusChange={(status) => updateStatus.mutate({ id: task.id, status })}
+            />
+          );
+        })}
       </div>
       {tasks.data && tasks.data.totalPages > 1 && (
         <div className="pagination">
@@ -79,6 +96,7 @@ export function TaskList({ sprints, users, assignedToId }: { sprints: Sprint[]; 
           reviewer={selectedTask.reviewerId ? usersById.get(selectedTask.reviewerId) : undefined}
           sprint={selectedTask.sprintId ? sprintsById.get(selectedTask.sprintId) : undefined}
           sprints={sprints}
+          projects={projects}
           users={users}
           onClose={() => setSelectedTask(null)}
           onTaskUpdated={setSelectedTask}

@@ -7,7 +7,6 @@ import com.taskmanager.dto.RefreshTokenRequest;
 import com.taskmanager.dto.RegisterRequest;
 import com.taskmanager.dto.UserResponse;
 import com.taskmanager.entity.User;
-import com.taskmanager.entity.enums.UserRole;
 import com.taskmanager.exception.AppException;
 import com.taskmanager.exception.UnauthorizedException;
 import com.taskmanager.repository.UserRepository;
@@ -54,7 +53,6 @@ public class AuthService {
         user.setEmail(request.email());
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setFullName(request.fullName());
-        user.setRole(UserRole.DEVELOPER);
         user.setActive(true);
 
         return toAuthResponse(userRepository.save(user));

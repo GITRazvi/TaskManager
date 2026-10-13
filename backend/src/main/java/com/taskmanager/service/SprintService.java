@@ -14,10 +14,11 @@ import com.taskmanager.entity.User;
 import com.taskmanager.entity.enums.SprintStatus;
 import com.taskmanager.entity.enums.TaskPriority;
 import com.taskmanager.entity.enums.TaskStatus;
-import com.taskmanager.entity.enums.UserRole;
+import com.taskmanager.entity.enums.ProjectRole;
 import com.taskmanager.exception.AppException;
 import com.taskmanager.exception.ForbiddenException;
 import com.taskmanager.exception.ResourceNotFoundException;
+import com.taskmanager.repository.ProjectMemberRepository;
 import com.taskmanager.repository.SprintRepository;
 import com.taskmanager.repository.TaskRepository;
 import com.taskmanager.repository.UserRepository;
@@ -40,6 +41,7 @@ public class SprintService {
     private final TaskRepository taskRepository;
     private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
+    private final ProjectMemberRepository projectMemberRepository;
 
     /**
      * Creates the sprint service with sprint, task, and user repositories needed for ownership and board queries.
@@ -48,23 +50,25 @@ public class SprintService {
             SprintRepository sprintRepository,
             TaskRepository taskRepository,
             UserRepository userRepository,
-            ProjectRepository projectRepository
+            ProjectRepository projectRepository,
+            ProjectMemberRepository projectMemberRepository
     ) {
         this.sprintRepository = sprintRepository;
         this.taskRepository = taskRepository;
         this.userRepository = userRepository;
         this.projectRepository = projectRepository;
+        this.projectMemberRepository = projectMemberRepository;
     }
 
     /**
      * Creates a planning sprint for {@code userId} after validating the request start and end dates.
      */
     @Transactional
-    public SprintResponse createSprint(SprintCreateRequest request, UUID userId, UserRole userRole) {
-        ensureCanManageSprints(userRole);
+    public SprintResponse createSprint(SprintCreateRequest request, UUID userId) {
         validateDates(request.startDate(), request.endDate());
         User user = getUser(userId);
-        Project project = resolveProject(request.projectId(), userId);
+        Project project = resolveAccessibleProject(request.projectId(), userId);
+        ensureCanManageSprints(getProjectRole(project.getId(), userId));
 
         Sprint sprint = new Sprint();
         sprint.setUser(user);
@@ -74,7 +78,7 @@ public class SprintService {
         sprint.setStartDate(request.startDate());
         sprint.setEndDate(request.endDate());
         sprint.setStatus(SprintStatus.PLANNING);
-        sprint.setParticipants(resolveParticipants(request.participantIdentifiers(), user));
+        sprint.setParticipants(resolveParticipants(request.participantIdentifiers(), user, project));
 
         return SprintResponse.from(sprintRepository.save(sprint));
     }
@@ -105,9 +109,9 @@ public class SprintService {
      * Updates mutable sprint fields, using existing dates when request dates are null before validating the range.
      */
     @Transactional
-    public SprintResponse updateSprint(UUID sprintId, UUID userId, UserRole userRole, SprintUpdateRequest request) {
-        ensureCanManageSprints(userRole);
+    public SprintResponse updateSprint(UUID sprintId, UUID userId, SprintUpdateRequest request) {
         Sprint sprint = getAccessibleSprint(sprintId, userId);
+        ensureCanManageSprints(getProjectRole(sprint.getProject().getId(), userId));
         LocalDate startDate = request.startDate() == null ? sprint.getStartDate() : request.startDate();
         LocalDate endDate = request.endDate() == null ? sprint.getEndDate() : request.endDate();
         validateDates(startDate, endDate);
@@ -122,7 +126,9 @@ public class SprintService {
             sprint.setDescription(request.description());
         }
         if (request.projectId() != null) {
-            sprint.setProject(resolveProject(request.projectId(), sprint.getUser().getId()));
+            Project project = resolveAccessibleProject(request.projectId(), userId);
+            ensureCanManageSprints(getProjectRole(project.getId(), userId));
+            sprint.setProject(project);
         }
         if (request.startDate() != null) {
             sprint.setStartDate(request.startDate());
@@ -134,7 +140,7 @@ public class SprintService {
             sprint.setStatus(request.status());
         }
         if (request.participantIdentifiers() != null) {
-            sprint.setParticipants(resolveParticipants(request.participantIdentifiers(), sprint.getUser()));
+            sprint.setParticipants(resolveParticipants(request.participantIdentifiers(), sprint.getUser(), sprint.getProject()));
         }
 
         return SprintResponse.from(sprint);
@@ -206,9 +212,10 @@ public class SprintService {
      * Deletes a sprint owned by {@code userId}; linked tasks are detached by the database foreign-key rule.
      */
     @Transactional
-    public void deleteSprint(UUID sprintId, UUID userId, UserRole userRole) {
-        ensureCanManageSprints(userRole);
-        sprintRepository.delete(getOwnedSprint(sprintId, userId));
+    public void deleteSprint(UUID sprintId, UUID userId) {
+        Sprint sprint = getAccessibleSprint(sprintId, userId);
+        ensureCanManageSprints(getProjectRole(sprint.getProject().getId(), userId));
+        sprintRepository.delete(sprint);
     }
 
     /**
@@ -230,7 +237,7 @@ public class SprintService {
     /**
      * Resolves usernames or email addresses to active sprint participants, always including the sprint owner.
      */
-    private Set<User> resolveParticipants(List<String> participantIdentifiers, User owner) {
+    private Set<User> resolveParticipants(List<String> participantIdentifiers, User owner, Project project) {
         Set<User> participants = new LinkedHashSet<>();
         participants.add(owner);
 
@@ -249,6 +256,13 @@ public class SprintService {
                             "SPRINT_MEMBER_NOT_FOUND",
                             "No active user found for sprint member: " + identifier
                     ));
+            if (!projectMemberRepository.existsByProjectIdAndUserId(project.getId(), participant.getId())) {
+                throw new AppException(
+                        HttpStatus.BAD_REQUEST,
+                        "SPRINT_MEMBER_NOT_IN_PROJECT",
+                        "Sprint member must belong to the selected project: " + identifier
+                );
+            }
             participants.add(participant);
         }
 
@@ -258,12 +272,17 @@ public class SprintService {
     /**
      * Resolves a required project id to a project owned by {@code userId}.
      */
-    private Project resolveProject(UUID projectId, UUID userId) {
+    private Project resolveAccessibleProject(UUID projectId, UUID userId) {
         if (projectId == null) {
             throw new AppException(HttpStatus.BAD_REQUEST, "PROJECT_REQUIRED", "Sprint project is required");
         }
-        return projectRepository.findByIdAndUserId(projectId, userId)
+        return projectRepository.findAccessibleByIdAndUserId(projectId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Project not found"));
+    }
+
+    private ProjectRole getProjectRole(UUID projectId, UUID userId) {
+        return projectMemberRepository.findRoleByProjectIdAndUserId(projectId, userId)
+                .orElseThrow(() -> new ForbiddenException("You do not have a role in this project"));
     }
 
     /**
@@ -287,9 +306,9 @@ public class SprintService {
         }
     }
 
-    private void ensureCanManageSprints(UserRole role) {
+    private void ensureCanManageSprints(ProjectRole role) {
         if (!role.canManageSprints()) {
-            throw new ForbiddenException("Only admins and project managers can manage sprints");
+            throw new ForbiddenException("Only project managers and scrum masters can manage sprints");
         }
     }
 }

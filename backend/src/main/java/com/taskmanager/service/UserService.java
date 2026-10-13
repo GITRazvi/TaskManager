@@ -173,8 +173,8 @@ public class UserService {
      * Ensures the supplied role has user-management privileges.
      */
     private void ensureCanManageUsers(UserRole role) {
-        if (!role.canManageUsers()) {
-            throw new ForbiddenException("Only admins can manage users and roles");
+        if (role == null || !role.canManageUsers()) {
+            throw new ForbiddenException("Global user role management is disabled");
         }
     }
 }

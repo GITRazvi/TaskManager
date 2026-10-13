@@ -3,6 +3,9 @@ package com.taskmanager.controller;
 
 import com.taskmanager.dto.ApiResponse;
 import com.taskmanager.dto.ProjectCreateRequest;
+import com.taskmanager.dto.ProjectMemberCreateRequest;
+import com.taskmanager.dto.ProjectMemberResponse;
+import com.taskmanager.dto.ProjectMemberRoleUpdateRequest;
 import com.taskmanager.dto.ProjectResponse;
 import com.taskmanager.dto.ProjectUpdateRequest;
 import com.taskmanager.security.UserPrincipal;
@@ -60,7 +63,7 @@ public class ProjectController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(ApiResponse.success(
-                        projectService.createProject(request, principal.getId(), principal.getRole()),
+                        projectService.createProject(request, principal.getId()),
                         "Project created successfully"
                 ));
     }
@@ -72,7 +75,7 @@ public class ProjectController {
             @Valid @RequestBody ProjectUpdateRequest request
     ) {
         return ResponseEntity.ok(ApiResponse.success(
-                projectService.updateProject(id, principal.getId(), principal.getRole(), request),
+                projectService.updateProject(id, principal.getId(), request),
                 "Project updated successfully"
         ));
     }
@@ -82,7 +85,44 @@ public class ProjectController {
             @PathVariable UUID id,
             @AuthenticationPrincipal UserPrincipal principal
     ) {
-        projectService.deleteProject(id, principal.getId(), principal.getRole());
+        projectService.deleteProject(id, principal.getId());
         return ResponseEntity.ok(ApiResponse.success(null, "Project deleted successfully"));
+    }
+
+    @PostMapping("/{id}/members")
+    public ResponseEntity<ApiResponse<ProjectMemberResponse>> addMember(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody ProjectMemberCreateRequest request
+    ) {
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success(
+                        projectService.addMember(id, principal.getId(), request),
+                        "Project member added successfully"
+                ));
+    }
+
+    @PutMapping("/{id}/members/{memberId}/role")
+    public ResponseEntity<ApiResponse<ProjectMemberResponse>> updateMemberRole(
+            @PathVariable UUID id,
+            @PathVariable UUID memberId,
+            @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody ProjectMemberRoleUpdateRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(
+                projectService.updateMemberRole(id, memberId, principal.getId(), request),
+                "Project member role updated successfully"
+        ));
+    }
+
+    @DeleteMapping("/{id}/members/{memberId}")
+    public ResponseEntity<ApiResponse<Void>> removeMember(
+            @PathVariable UUID id,
+            @PathVariable UUID memberId,
+            @AuthenticationPrincipal UserPrincipal principal
+    ) {
+        projectService.removeMember(id, memberId, principal.getId());
+        return ResponseEntity.ok(ApiResponse.success(null, "Project member removed successfully"));
     }
 }

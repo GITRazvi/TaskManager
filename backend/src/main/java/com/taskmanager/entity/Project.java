@@ -59,6 +59,10 @@ public class Project {
     @Builder.Default
     private List<Sprint> sprints = new ArrayList<>();
 
+    @OneToMany(mappedBy = "project")
+    @Builder.Default
+    private List<ProjectMember> members = new ArrayList<>();
+
     /**
      * Returns the generated project identifier.
      */
@@ -155,5 +159,19 @@ public class Project {
      */
     public void setSprints(List<Sprint> sprints) {
         this.sprints = sprints;
+    }
+
+    /**
+     * Returns the users who belong to this project with project-scoped roles.
+     */
+    public List<ProjectMember> getMembers() {
+        return members;
+    }
+
+    /**
+     * Sets the project-scoped member list.
+     */
+    public void setMembers(List<ProjectMember> members) {
+        this.members = members;
     }
 }

@@ -17,9 +17,10 @@ import com.taskmanager.entity.User;
 import com.taskmanager.entity.enums.SprintStatus;
 import com.taskmanager.entity.enums.TaskPriority;
 import com.taskmanager.entity.enums.TaskStatus;
-import com.taskmanager.entity.enums.UserRole;
+import com.taskmanager.entity.enums.ProjectRole;
 import com.taskmanager.exception.AppException;
 import com.taskmanager.exception.ForbiddenException;
+import com.taskmanager.repository.ProjectMemberRepository;
 import com.taskmanager.repository.ProjectRepository;
 import com.taskmanager.repository.SprintRepository;
 import com.taskmanager.repository.TaskRepository;
@@ -50,6 +51,9 @@ class SprintServiceTest {
     @Mock
     private ProjectRepository projectRepository;
 
+    @Mock
+    private ProjectMemberRepository projectMemberRepository;
+
     private SprintService sprintService;
 
     /**
@@ -57,7 +61,13 @@ class SprintServiceTest {
      */
     @BeforeEach
     void setUp() {
-        sprintService = new SprintService(sprintRepository, taskRepository, userRepository, projectRepository);
+        sprintService = new SprintService(
+                sprintRepository,
+                taskRepository,
+                userRepository,
+                projectRepository,
+                projectMemberRepository
+        );
     }
 
     /**
@@ -73,14 +83,15 @@ class SprintServiceTest {
         LocalDate endDate = startDate.plusWeeks(2);
         SprintCreateRequest request = new SprintCreateRequest("Sprint 1", "Initial sprint", projectId, startDate, endDate, List.of());
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(projectRepository.findByIdAndUserId(projectId, userId)).thenReturn(Optional.of(project));
+        when(projectRepository.findAccessibleByIdAndUserId(projectId, userId)).thenReturn(Optional.of(project));
+        when(projectMemberRepository.findRoleByProjectIdAndUserId(projectId, userId)).thenReturn(Optional.of(ProjectRole.PROJECT_MANAGER));
         when(sprintRepository.save(any(Sprint.class))).thenAnswer(invocation -> {
             Sprint sprint = invocation.getArgument(0);
             sprint.setId(UUID.randomUUID());
             return sprint;
         });
 
-        var response = sprintService.createSprint(request, userId, UserRole.PROJECT_MANAGER);
+        var response = sprintService.createSprint(request, userId);
 
         assertThat(response.name()).isEqualTo("Sprint 1");
         assertThat(response.userId()).isEqualTo(userId);
@@ -125,16 +136,19 @@ class SprintServiceTest {
                 List.of("mira", "noah@example.com")
         );
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(projectRepository.findByIdAndUserId(projectId, userId)).thenReturn(Optional.of(project));
+        when(projectRepository.findAccessibleByIdAndUserId(projectId, userId)).thenReturn(Optional.of(project));
+        when(projectMemberRepository.findRoleByProjectIdAndUserId(projectId, userId)).thenReturn(Optional.of(ProjectRole.PROJECT_MANAGER));
         when(userRepository.findActiveByUsernameOrEmail("mira")).thenReturn(Optional.of(mira));
         when(userRepository.findActiveByUsernameOrEmail("noah@example.com")).thenReturn(Optional.of(noah));
+        when(projectMemberRepository.existsByProjectIdAndUserId(projectId, miraId)).thenReturn(true);
+        when(projectMemberRepository.existsByProjectIdAndUserId(projectId, noahId)).thenReturn(true);
         when(sprintRepository.save(any(Sprint.class))).thenAnswer(invocation -> {
             Sprint sprint = invocation.getArgument(0);
             sprint.setId(UUID.randomUUID());
             return sprint;
         });
 
-        var response = sprintService.createSprint(request, userId, UserRole.PROJECT_MANAGER);
+        var response = sprintService.createSprint(request, userId);
 
         assertThat(response.participants()).extracting("id").containsExactly(userId, miraId, noahId);
     }
@@ -166,8 +180,10 @@ class SprintServiceTest {
         );
         when(sprintRepository.findAccessibleByIdAndUserId(sprintId, userId)).thenReturn(Optional.of(sprint));
         when(userRepository.findActiveByUsernameOrEmail("noah@example.com")).thenReturn(Optional.of(noah));
+        when(projectMemberRepository.findRoleByProjectIdAndUserId(projectId, userId)).thenReturn(Optional.of(ProjectRole.PROJECT_MANAGER));
+        when(projectMemberRepository.existsByProjectIdAndUserId(projectId, noahId)).thenReturn(true);
 
-        var response = sprintService.updateSprint(sprintId, userId, UserRole.PROJECT_MANAGER, request);
+        var response = sprintService.updateSprint(sprintId, userId, request);
 
         assertThat(sprint.getParticipants()).containsExactly(user, noah);
         assertThat(response.participants()).extracting("id").containsExactly(userId, noahId);
@@ -197,14 +213,15 @@ class SprintServiceTest {
                 null
         );
         when(sprintRepository.findAccessibleByIdAndUserId(sprintId, managerId)).thenReturn(Optional.of(sprint));
-        when(projectRepository.findByIdAndUserId(projectId, ownerId)).thenReturn(Optional.of(project));
+        when(projectMemberRepository.findRoleByProjectIdAndUserId(projectId, managerId)).thenReturn(Optional.of(ProjectRole.PROJECT_MANAGER));
+        when(projectRepository.findAccessibleByIdAndUserId(projectId, managerId)).thenReturn(Optional.of(project));
 
-        var response = sprintService.updateSprint(sprintId, managerId, UserRole.PROJECT_MANAGER, request);
+        var response = sprintService.updateSprint(sprintId, managerId, request);
 
         assertThat(response.name()).isEqualTo("Updated sprint");
         assertThat(response.status()).isEqualTo(SprintStatus.ACTIVE);
         assertThat(response.projectId()).isEqualTo(projectId);
-        verify(projectRepository).findByIdAndUserId(projectId, ownerId);
+        verify(projectRepository).findAccessibleByIdAndUserId(projectId, managerId);
     }
 
     /**
@@ -216,9 +233,10 @@ class SprintServiceTest {
         UUID sprintId = UUID.randomUUID();
         User user = activeUser(userId);
         Sprint sprint = sprint(sprintId, user, project(UUID.randomUUID(), user));
-        when(sprintRepository.findByIdAndUserId(sprintId, userId)).thenReturn(Optional.of(sprint));
+        when(sprintRepository.findAccessibleByIdAndUserId(sprintId, userId)).thenReturn(Optional.of(sprint));
+        when(projectMemberRepository.findRoleByProjectIdAndUserId(sprint.getProject().getId(), userId)).thenReturn(Optional.of(ProjectRole.PROJECT_MANAGER));
 
-        sprintService.deleteSprint(sprintId, userId, UserRole.PROJECT_MANAGER);
+        sprintService.deleteSprint(sprintId, userId);
 
         verify(sprintRepository).delete(sprint);
     }
@@ -232,13 +250,12 @@ class SprintServiceTest {
         LocalDate startDate = LocalDate.now().plusDays(1);
         SprintCreateRequest request = new SprintCreateRequest("Sprint 1", null, UUID.randomUUID(), startDate, startDate, List.of());
 
-        assertThatThrownBy(() -> sprintService.createSprint(request, userId, UserRole.PROJECT_MANAGER))
+        assertThatThrownBy(() -> sprintService.createSprint(request, userId))
                 .isInstanceOf(AppException.class)
                 .hasMessage("Sprint end date must be after start date")
                 .extracting("errorCode")
                 .isEqualTo("INVALID_SPRINT_DATES");
 
-        verify(userRepository, never()).findById(any(UUID.class));
         verify(sprintRepository, never()).save(any(Sprint.class));
     }
 
@@ -258,11 +275,16 @@ class SprintServiceTest {
                 List.of()
         );
 
-        assertThatThrownBy(() -> sprintService.createSprint(request, userId, UserRole.DEVELOPER))
-                .isInstanceOf(ForbiddenException.class)
-                .hasMessage("Only admins and project managers can manage sprints");
+        User user = activeUser(userId);
+        Project project = project(request.projectId(), user);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(projectRepository.findAccessibleByIdAndUserId(request.projectId(), userId)).thenReturn(Optional.of(project));
+        when(projectMemberRepository.findRoleByProjectIdAndUserId(request.projectId(), userId)).thenReturn(Optional.of(ProjectRole.DEVELOPER));
 
-        verify(userRepository, never()).findById(any(UUID.class));
+        assertThatThrownBy(() -> sprintService.createSprint(request, userId))
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessage("Only project managers and scrum masters can manage sprints");
+
         verify(sprintRepository, never()).save(any(Sprint.class));
     }
 

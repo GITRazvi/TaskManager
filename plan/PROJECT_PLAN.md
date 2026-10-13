@@ -174,6 +174,7 @@ CREATE TABLE users (
   password_hash VARCHAR(255) NOT NULL,
   full_name VARCHAR(255),
   avatar_url TEXT,
+  role VARCHAR(50) NOT NULL DEFAULT 'DEVELOPER',
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -181,6 +182,8 @@ CREATE TABLE users (
 
 CREATE INDEX idx_users_email ON users(email);
 ```
+
+Supported role values are `ADMIN`, `PROJECT_MANAGER`, `DEVELOPER`, `QA_TESTER`, `PRODUCT_OWNER`, `SCRUM_MASTER`, and `VIEWER`.
 
 #### projects Table
 ```sql
@@ -574,6 +577,7 @@ CREATE TABLE users (
   password_hash VARCHAR(255) NOT NULL,
   full_name VARCHAR(255),
   avatar_url TEXT,
+  role VARCHAR(50) NOT NULL DEFAULT 'DEVELOPER',
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -1284,3 +1288,12 @@ Week 7-8: Sprint 4 (DevOps & Production)
 **Document Last Updated:** 2026-07-06  
 **Version:** 1.1 (Implementation Snapshot)  
 **Status:** Implementation in progress
+
+## 2026-07-15 Scope Update
+
+- Roles moved from global user accounts to project membership.
+- Project creators are automatically assigned `PROJECT_MANAGER`.
+- Project managers can add users to projects and edit their roles inside that project.
+- A user outside a project has no role for that project.
+- Sprint and sprint-backed task authorization now resolves through project membership.
+- The `users.role` column is nullable legacy data; `project_members.role` is the active authorization source.

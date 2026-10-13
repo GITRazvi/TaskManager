@@ -33,9 +33,11 @@ public interface TaskRepository extends JpaRepository<Task, UUID>, JpaSpecificat
             select distinct task
             from Task task
             left join task.sprint sprint
+            left join sprint.project project
+            left join project.members projectMember
             left join sprint.participants participant
             where task.id = :id
-              and (task.user.id = :userId or sprint.user.id = :userId or participant.id = :userId)
+              and (task.user.id = :userId or projectMember.user.id = :userId or participant.id = :userId)
             """)
     Optional<Task> findVisibleByIdAndUserId(@Param("id") UUID id, @Param("userId") UUID userId);
 

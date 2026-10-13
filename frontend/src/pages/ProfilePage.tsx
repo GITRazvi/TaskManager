@@ -21,12 +21,13 @@ import { Loading } from "../components/Common/Loading";
 import { TaskCard } from "../components/Tasks/TaskCard";
 import { TaskDetails } from "../components/Tasks/TaskDetails";
 import { useCurrentUser } from "../hooks/useAuth";
+import { useProjects } from "../hooks/useProjects";
 import { useSprints } from "../hooks/useSprints";
 import { useTasks, useUpdateTaskStatus } from "../hooks/useTasks";
 import { useUsers } from "../hooks/useUsers";
 import { useAuthStore } from "../store/authStore";
 import type { Task, TaskStatus } from "../types";
-import { roleLabels } from "../utils/permissions";
+import { canTransitionTaskStatusForRole, getRoleForTask } from "../utils/permissions";
 import { taskStatusLabels, taskStatusOptions } from "../utils/taskStatus";
 
 const today = new Date().toISOString().slice(0, 10);
@@ -85,6 +86,7 @@ export function ProfilePage() {
     { enabled: Boolean(user?.id) }
   );
   const visibleTasks = useTasks({ page: 0, size: 100 }, { enabled: Boolean(user?.id) });
+  const projectsQuery = useProjects();
   const sprints = useSprints();
   const users = useUsers();
   const updateStatus = useUpdateTaskStatus();
@@ -198,7 +200,7 @@ export function ProfilePage() {
               </span>
               <span>
                 <UserRoundCheck aria-hidden="true" />
-                {user?.role ? roleLabels[user.role] : "Role unavailable"}
+                Project roles are assigned per project
               </span>
             </div>
           </div>
@@ -323,6 +325,7 @@ export function ProfilePage() {
                 key={task.id}
                 task={task}
                 assignee={task.assignedToId ? usersById.get(task.assignedToId) : user ?? undefined}
+                canChangeStatus={canTransitionTaskStatusForRole(getRoleForTask(task, projectsQuery.data ?? [], user))}
                 onOpen={() => setSelectedTask(task)}
                 onStatusChange={(status) => updateStatus.mutate({ id: task.id, status })}
               />
@@ -436,6 +439,7 @@ export function ProfilePage() {
           reviewer={selectedTask.reviewerId ? usersById.get(selectedTask.reviewerId) : undefined}
           sprint={selectedTask.sprintId ? sprintsById.get(selectedTask.sprintId) : undefined}
           sprints={sprints.data ?? []}
+          projects={projectsQuery.data ?? []}
           users={users.data ?? []}
           onClose={() => setSelectedTask(null)}
           onTaskUpdated={setSelectedTask}

@@ -4,6 +4,7 @@ package com.taskmanager.security;
 import com.taskmanager.entity.User;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.JwtBuilder;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
@@ -93,16 +94,18 @@ public class JwtTokenProvider {
         Instant now = Instant.now();
         Instant expiresAt = now.plusMillis(ttlMs);
 
-        return Jwts.builder()
+        JwtBuilder builder = Jwts.builder()
                 .subject(user.getId().toString())
                 .claim("email", user.getEmail())
                 .claim("username", user.getUsername())
-                .claim("role", user.getRole().name())
                 .claim("type", type)
                 .issuedAt(Date.from(now))
-                .expiration(Date.from(expiresAt))
-                .signWith(key, Jwts.SIG.HS512)
-                .compact();
+                .expiration(Date.from(expiresAt));
+        if (user.getRole() != null) {
+            builder.claim("role", user.getRole().name());
+        }
+
+        return builder.signWith(key, Jwts.SIG.HS512).compact();
     }
 
     /**

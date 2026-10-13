@@ -1,21 +1,36 @@
 // File responsibility: Renders project management workflows for listing, creating, editing, and deleting projects.
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FolderKanban, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { FolderKanban, Pencil, Plus, Save, Trash2, UserPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useSearchParams } from "react-router-dom";
 import { z } from "zod";
 import { getApiErrorMessage } from "../api/client";
 import { Loading } from "../components/Common/Loading";
-import { useCreateProject, useDeleteProject, useProjects, useUpdateProject } from "../hooks/useProjects";
-import type { Project } from "../types";
+import {
+  useAddProjectMember,
+  useCreateProject,
+  useDeleteProject,
+  useProjects,
+  useRemoveProjectMember,
+  useUpdateProject,
+  useUpdateProjectMemberRole
+} from "../hooks/useProjects";
+import { useUsers } from "../hooks/useUsers";
+import type { Project, ProjectRole } from "../types";
+import { canManageProject, projectRoles, roleLabels } from "../utils/permissions";
 
-const schema = z.object({
+const projectSchema = z.object({
   name: z.string().min(1, "Name is required").max(255),
   description: z.string().optional()
 });
+const memberSchema = z.object({
+  userIdentifier: z.string().min(1, "Select a user"),
+  role: z.enum(["PROJECT_MANAGER", "DEVELOPER", "QA_TESTER", "PRODUCT_OWNER", "SCRUM_MASTER", "VIEWER"])
+});
 
-type FormValues = z.infer<typeof schema>;
+type ProjectFormValues = z.infer<typeof projectSchema>;
+type MemberFormValues = z.infer<typeof memberSchema>;
 
 /**
  * Renders project CRUD controls and honors dashboard links to a specific project.
@@ -24,14 +39,22 @@ type FormValues = z.infer<typeof schema>;
 export function ProjectsPage() {
   const [searchParams] = useSearchParams();
   const projects = useProjects();
+  const users = useUsers();
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
+  const addMember = useAddProjectMember();
+  const updateMemberRole = useUpdateProjectMemberRole();
+  const removeMember = useRemoveProjectMember();
   const linkedProjectId = searchParams.get("project");
   const [editingProject, setEditingProject] = useState<Project | null>(null);
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
+  const form = useForm<ProjectFormValues>({
+    resolver: zodResolver(projectSchema),
     defaultValues: { name: "", description: "" }
+  });
+  const memberForm = useForm<MemberFormValues>({
+    resolver: zodResolver(memberSchema),
+    defaultValues: { userIdentifier: "", role: "DEVELOPER" }
   });
 
   useEffect(() => {
@@ -51,6 +74,16 @@ export function ProjectsPage() {
       setEditingProject(linkedProject);
     }
   }, [linkedProjectId, projects.data]);
+
+  useEffect(() => {
+    if (!editingProject || !projects.data) {
+      return;
+    }
+    const latestProject = projects.data.find((project) => project.id === editingProject.id);
+    if (latestProject && latestProject !== editingProject) {
+      setEditingProject(latestProject);
+    }
+  }, [editingProject, projects.data]);
 
   const clearEdit = () => {
     setEditingProject(null);
@@ -78,6 +111,25 @@ export function ProjectsPage() {
     });
   });
 
+  const onAddMember = memberForm.handleSubmit((values) => {
+    if (!editingProject) {
+      return;
+    }
+
+    addMember.mutate(
+      {
+        projectId: editingProject.id,
+        payload: {
+          userIdentifier: values.userIdentifier,
+          role: values.role
+        }
+      },
+      {
+        onSuccess: () => memberForm.reset({ userIdentifier: "", role: "DEVELOPER" })
+      }
+    );
+  });
+
   const handleDeleteProject = (project: Project) => {
     if (deleteProject.isLoading) {
       return;
@@ -93,9 +145,25 @@ export function ProjectsPage() {
     }
   };
 
-  const error = createProject.error || updateProject.error || deleteProject.error || projects.error;
+  const error =
+    createProject.error ||
+    updateProject.error ||
+    deleteProject.error ||
+    addMember.error ||
+    updateMemberRole.error ||
+    removeMember.error ||
+    projects.error;
   const errorMessage = error ? getApiErrorMessage(error) : null;
-  const isSaving = createProject.isLoading || updateProject.isLoading || deleteProject.isLoading;
+  const isSaving =
+    createProject.isLoading ||
+    updateProject.isLoading ||
+    deleteProject.isLoading ||
+    addMember.isLoading ||
+    updateMemberRole.isLoading ||
+    removeMember.isLoading;
+  const canManageSelectedProject = canManageProject(editingProject);
+  const availableUsers =
+    users.data?.filter((user) => !editingProject?.members.some((member) => member.userId === user.id)) ?? [];
 
   return (
     <div className="page-stack">
@@ -131,6 +199,7 @@ export function ProjectsPage() {
                 </div>
                 <div className="project-row-actions">
                   <span>{project.sprintCount} sprints</span>
+                  {project.role && <span className="role-chip">{roleLabels[project.role]}</span>}
                   <button
                     className="icon-button"
                     type="button"
@@ -140,15 +209,17 @@ export function ProjectsPage() {
                   >
                     <Pencil aria-hidden="true" />
                   </button>
-                  <button
-                    className="icon-button danger"
-                    type="button"
-                    onClick={() => handleDeleteProject(project)}
-                    aria-label={`Delete ${project.name}`}
-                    title="Delete project"
-                  >
-                    <Trash2 aria-hidden="true" />
-                  </button>
+                  {canManageProject(project) && (
+                    <button
+                      className="icon-button danger"
+                      type="button"
+                      onClick={() => handleDeleteProject(project)}
+                      aria-label={`Delete ${project.name}`}
+                      title="Delete project"
+                    >
+                      <Trash2 aria-hidden="true" />
+                    </button>
+                  )}
                 </div>
               </article>
             ))}
@@ -180,6 +251,90 @@ export function ProjectsPage() {
               {isSaving ? "Saving" : editingProject ? "Save project" : "Create project"}
             </button>
           </form>
+          {editingProject && (
+            <section className="profile-list-section">
+              <div className="section-heading">
+                <div>
+                  <h2>Members</h2>
+                  <p>{editingProject.members.length} assigned roles</p>
+                </div>
+              </div>
+              {canManageSelectedProject && (
+                <form className="panel-form" onSubmit={onAddMember}>
+                  <label>
+                    User
+                    <input list="project-users" {...memberForm.register("userIdentifier")} />
+                    <datalist id="project-users">
+                      {availableUsers.map((user) => (
+                        <option key={user.id} value={user.username}>
+                          {user.fullName || user.email}
+                        </option>
+                      ))}
+                    </datalist>
+                    {memberForm.formState.errors.userIdentifier && (
+                      <small>{memberForm.formState.errors.userIdentifier.message}</small>
+                    )}
+                  </label>
+                  <label>
+                    Role
+                    <select {...memberForm.register("role")}>
+                      {projectRoles.map((role) => (
+                        <option key={role} value={role}>
+                          {roleLabels[role]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button className="secondary-button" type="submit" disabled={isSaving}>
+                    <UserPlus aria-hidden="true" />
+                    Add member
+                  </button>
+                </form>
+              )}
+              <div className="user-list">
+                {editingProject.members.map((member) => (
+                  <article className="user-row" key={member.id}>
+                    <div className="user-row-main">
+                      <strong>{member.fullName || member.username}</strong>
+                      <span>{member.email}</span>
+                    </div>
+                    <div className="user-row-actions">
+                      <select
+                        aria-label={`Role for ${member.username}`}
+                        value={member.role}
+                        disabled={!canManageSelectedProject || isSaving}
+                        onChange={(event) =>
+                          updateMemberRole.mutate({
+                            projectId: editingProject.id,
+                            memberId: member.id,
+                            payload: { role: event.target.value as ProjectRole }
+                          })
+                        }
+                      >
+                        {projectRoles.map((role) => (
+                          <option key={role} value={role}>
+                            {roleLabels[role]}
+                          </option>
+                        ))}
+                      </select>
+                      {canManageSelectedProject && (
+                        <button
+                          className="icon-button danger"
+                          type="button"
+                          disabled={isSaving}
+                          onClick={() => removeMember.mutate({ projectId: editingProject.id, memberId: member.id })}
+                          aria-label={`Remove ${member.username}`}
+                          title="Remove member"
+                        >
+                          <Trash2 aria-hidden="true" />
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
         </aside>
       </div>
     </div>

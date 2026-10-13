@@ -1,7 +1,7 @@
 ﻿<!-- File responsibility: Lists remaining features, fixes, and follow-up implementation tasks. -->
 # To Implement
 
-Status snapshot: 2026-07-07.
+Status snapshot: 2026-07-15.
 
 This file tracks the remaining implementation work based on the current repository state and the sprint plan.
 
@@ -10,7 +10,8 @@ This file tracks the remaining implementation work based on the current reposito
 - Add persistent refresh-token storage and invalidation instead of the current stateless refresh-token pass.
 - Add a real logout invalidation strategy if refresh tokens are persisted.
 - Add a custom authentication entry point and access denied handler so Spring Security `401` and `403` responses use the same `ApiResponse` shape as application errors.
-- Decide whether users should be able to assign tasks to other users; the current endpoint pass only allows assignment to the current user.
+- Replace the current project-role permission helpers with granular issue-type/workflow permissions if the product needs exact Jira-style rules for bugs, stories, approvals, attachments, and viewer comment policy.
+- Decide whether Scrum Masters and Product Owners should be able to assign or move tasks they do not own; the current backend still limits some task body edits to task owners plus project managers.
 - Add a way to clear nullable task fields such as `sprintId`, `assignedToId`, and `dueDate` if the product needs explicit unassignment.
 - Decide whether task comments should stay as a single editable notes field or become a threaded comment model with authors and timestamps.
 - Add delete/archive behavior for projects if required.
@@ -18,10 +19,10 @@ This file tracks the remaining implementation work based on the current reposito
 
 ## Backend Project And Sprint Follow-Up
 
-- Decide whether projects should support shared membership, or remain owner-scoped while sprint participants provide collaboration.
 - Add project deletion behavior only after defining what should happen to linked sprints and tasks.
 - Add controller/integration tests for:
   - Project endpoints.
+  - Project member add/update/remove endpoints.
   - Sprint creation with a required `projectId`.
   - Rejecting sprint creation or update with a project owned by another user.
 - Verify Flyway migration `V9__Create_projects_and_link_sprints.sql` against an existing database with sprints.
@@ -64,6 +65,7 @@ This file tracks the remaining implementation work based on the current reposito
   - Task endpoints
   - Project endpoints
   - Sprint endpoints
+- Add project-role authorization tests covering all supported roles across project member, project, sprint, task, status, and comment endpoints.
 - Add security tests for:
   - Unauthenticated access rejection.
   - Authenticated access.

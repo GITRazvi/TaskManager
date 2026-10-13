@@ -1,7 +1,13 @@
 // File responsibility: Provides React Query hooks and cache updates for project CRUD workflows.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as projectsApi from "../api/projects";
-import type { Project, ProjectCreateRequest, ProjectUpdateRequest } from "../types";
+import type {
+  Project,
+  ProjectCreateRequest,
+  ProjectMemberCreateRequest,
+  ProjectMemberRoleUpdateRequest,
+  ProjectUpdateRequest
+} from "../types";
 
 /**
  * Inserts or replaces one project in a cached project list.
@@ -78,5 +84,42 @@ export function useDeleteProject() {
       void queryClient.invalidateQueries({ queryKey: ["sprints"] });
       void queryClient.invalidateQueries({ queryKey: ["tasks"] });
     }
+  });
+}
+
+function invalidateProjectWork(queryClient: ReturnType<typeof useQueryClient>) {
+  void queryClient.invalidateQueries({ queryKey: ["projects"] });
+  void queryClient.invalidateQueries({ queryKey: ["sprints"] });
+  void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+  void queryClient.invalidateQueries({ queryKey: ["task-stats"] });
+}
+
+export function useAddProjectMember() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ projectId, payload }: { projectId: string; payload: ProjectMemberCreateRequest }) =>
+      projectsApi.addProjectMember(projectId, payload),
+    onSuccess: () => invalidateProjectWork(queryClient)
+  });
+}
+
+export function useUpdateProjectMemberRole() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ projectId, memberId, payload }: { projectId: string; memberId: string; payload: ProjectMemberRoleUpdateRequest }) =>
+      projectsApi.updateProjectMemberRole(projectId, memberId, payload),
+    onSuccess: () => invalidateProjectWork(queryClient)
+  });
+}
+
+export function useRemoveProjectMember() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ projectId, memberId }: { projectId: string; memberId: string }) =>
+      projectsApi.removeProjectMember(projectId, memberId),
+    onSuccess: () => invalidateProjectWork(queryClient)
   });
 }

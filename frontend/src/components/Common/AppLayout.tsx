@@ -1,9 +1,8 @@
 // File responsibility: Renders the authenticated shell with navigation, theme controls, and nested page outlet.
-import { CheckSquare, FolderKanban, LayoutDashboard, LogOut, Rows3, UserCircle, Users } from "lucide-react";
+import { CheckSquare, FolderKanban, LayoutDashboard, LogOut, Rows3, UserCircle } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useLogout } from "../../hooks/useAuth";
 import { useAuthStore } from "../../store/authStore";
-import { canManageUsers, roleLabels } from "../../utils/permissions";
 import { ThemeToggle } from "./ThemeToggle";
 
 /**
@@ -45,18 +44,11 @@ export function AppLayout() {
             <CheckSquare aria-hidden="true" />
             Sprints
           </NavLink>
-          {canManageUsers(user) && (
-            <NavLink to="/users">
-              <Users aria-hidden="true" />
-              Users
-            </NavLink>
-          )}
         </nav>
         <div className="sidebar-footer">
           <NavLink className="user-chip" to="/profile" aria-label="Open profile">
             <UserCircle aria-hidden="true" />
             <span>{user?.fullName || user?.username || "Account"}</span>
-            {user?.role && <span className="role-chip">{roleLabels[user.role]}</span>}
           </NavLink>
           <ThemeToggle />
           <button className="icon-text-button" type="button" onClick={handleLogout}>

@@ -342,6 +342,17 @@ GET    /api/sprints/{id}/tasks â†’ Get Kanban board data
 GET    /api/sprints/{id}/stats â†’ Get sprint statistics
 ```
 
+### Supported User Roles
+```
+ADMIN            -> Administrator / full system access
+PROJECT_MANAGER  -> Project, sprint, and visible task management
+DEVELOPER        -> Owned/visible task implementation workflow
+QA_TESTER        -> Visible task testing workflow, comments, and evidence attachments
+PRODUCT_OWNER    -> Backlog/task metadata and progress review
+SCRUM_MASTER     -> Sprint management and coordination
+VIEWER           -> Read-only task progress, comments optional
+```
+
 ---
 
 ## File Organization
@@ -627,4 +638,16 @@ docker-compose logs -f
 ---
 
 **Version:** 1.1  
-**Last Updated:** 2026-07-06
+**Last Updated:** 2026-07-15
+
+## Current Role Model Update
+
+- User accounts authenticate identity only; new users do not receive a global role.
+- Project roles are stored in `project_members`.
+- Creating a project automatically adds the creator as `PROJECT_MANAGER`.
+- Supported project roles are `PROJECT_MANAGER`, `DEVELOPER`, `QA_TESTER`, `PRODUCT_OWNER`, `SCRUM_MASTER`, and `VIEWER`.
+- Project managers manage project members through:
+  - `POST /api/projects/{id}/members`
+  - `PUT /api/projects/{id}/members/{memberId}/role`
+  - `DELETE /api/projects/{id}/members/{memberId}`
+- Sprint and sprint-backed task permissions resolve from the user's project role.

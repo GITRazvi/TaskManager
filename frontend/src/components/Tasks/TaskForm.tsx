@@ -7,8 +7,8 @@ import { z } from "zod";
 import { getApiErrorMessage } from "../../api/client";
 import { useCreateTask, useUpdateTask } from "../../hooks/useTasks";
 import { useAuthStore } from "../../store/authStore";
-import type { Sprint, Task, TaskPriority, User } from "../../types";
-import { canAssignTaskTo, canSetTaskMetadata } from "../../utils/permissions";
+import type { Project, ProjectRole, Sprint, Task, TaskPriority, User } from "../../types";
+import { canAssignTaskToForRole, canSetTaskMetadataForRole, getRoleForSprint } from "../../utils/permissions";
 
 const schema = z.object({
   title: z.string().min(1, "Title is required").max(255),
@@ -37,6 +37,7 @@ type FormValues = z.infer<typeof schema>;
  */
 export function TaskForm({
   sprints,
+  projects = [],
   users,
   editingTask,
   defaultSprintId = "",
@@ -45,6 +46,7 @@ export function TaskForm({
   onDone
 }: {
   sprints: Sprint[];
+  projects?: Project[];
   users: User[];
   editingTask?: Task | null;
   defaultSprintId?: string;
@@ -55,7 +57,6 @@ export function TaskForm({
   const createTask = useCreateTask();
   const updateTask = useUpdateTask();
   const currentUser = useAuthStore((state) => state.user);
-  const canSetMetadata = canSetTaskMetadata(currentUser);
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -76,8 +77,12 @@ export function TaskForm({
     () => sprints.find((sprint) => sprint.id === selectedSprintId),
     [selectedSprintId, sprints]
   );
+  const selectedRole: ProjectRole | null = selectedSprint
+    ? getRoleForSprint(selectedSprint, projects)
+    : "DEVELOPER";
+  const canSetMetadata = canSetTaskMetadataForRole(selectedRole);
   const reviewerOptions = selectedSprint?.participants?.length ? selectedSprint.participants : users;
-  const assigneeOptions = users.filter((user) => canAssignTaskTo(currentUser, user.id));
+  const assigneeOptions = users.filter((user) => canAssignTaskToForRole(selectedRole, currentUser?.id, user.id));
 
   useEffect(() => {
     form.reset({

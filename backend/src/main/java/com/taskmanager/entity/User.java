@@ -53,9 +53,8 @@ public class User {
     private String avatarUrl;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 50)
-    @Builder.Default
-    private UserRole role = UserRole.DEVELOPER;
+    @Column(length = 50)
+    private UserRole role;
 
     @Column(name = "is_active", nullable = false)
     @Builder.Default
@@ -166,17 +165,17 @@ public class User {
     }
 
     /**
-     * Returns the user's application role, defaulting legacy null values to developer.
+     * Returns the deprecated global role. Project permissions use project membership roles instead.
      */
     public UserRole getRole() {
-        return role == null ? UserRole.DEVELOPER : role;
+        return role;
     }
 
     /**
-     * Sets the user's application role.
+     * Sets the deprecated global role.
      */
     public void setRole(UserRole role) {
-        this.role = role == null ? UserRole.DEVELOPER : role;
+        this.role = role;
     }
 
     /**

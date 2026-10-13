@@ -367,12 +367,19 @@
 - [x] Create `ProjectServiceTest.java`
   - [x] Test project creation
   - [x] Test blank project name rejection
-- [ ] Create `SprintServiceTest.java`
-  - [ ] Test sprint creation
-  - [ ] Test statistics calculation
+- [x] Create `SprintServiceTest.java`
+  - [x] Test sprint creation
+  - [x] Test statistics calculation
   - [ ] Test permission checks
 - [ ] Create `SprintControllerTest.java`
   - [ ] Test all 6 endpoints
+
+#### Role Management
+- [x] Add project-scoped Project Manager, Developer, QA / Tester, Product Owner, Scrum Master, and Viewer / Stakeholder role values
+- [x] Assign project creators as project managers
+- [x] Add project member add, role edit, and remove workflows for project managers
+- [x] Add focused backend and frontend tests for role lists and project-role permission helpers
+- [ ] Add controller-level authorization tests for every project role
 
 ### Frontend Tasks
 

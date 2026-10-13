@@ -1,7 +1,7 @@
 ﻿<!-- File responsibility: Summarizes completed implementation work and current project capabilities. -->
 # Implemented So Far
 
-Status snapshot: 2026-07-07.
+Status snapshot: 2026-07-15.
 
 This file reflects what is present in the repository source tree. It does not mark runtime behavior as complete unless the supporting application code exists.
 
@@ -10,6 +10,7 @@ This file reflects what is present in the repository source tree. It does not ma
 - Created the main project plan in `plan/PROJECT_PLAN.md`.
 - Created sprint-level checklists in `plan/SPRINT_CHECKLISTS.md`.
 - Created the technology stack reference in `plan/TECH_STACK.md`.
+- Added root AI-agent guidance in `AGENTS.md` covering project overview, architecture, coding guidelines, response style, verification expectations, and the required `plan/` documentation update workflow.
 
 ## Backend Foundation
 
@@ -82,6 +83,10 @@ This file reflects what is present in the repository source tree. It does not ma
   - `backend/src/main/java/com/taskmanager/entity/enums/TaskPriority.java`
 - Created sprint status enum:
   - `backend/src/main/java/com/taskmanager/entity/enums/SprintStatus.java`
+- Created and expanded user role enum:
+  - `backend/src/main/java/com/taskmanager/entity/enums/UserRole.java`
+  - Supported API values: `ADMIN`, `PROJECT_MANAGER`, `DEVELOPER`, `QA_TESTER`, `PRODUCT_OWNER`, `SCRUM_MASTER`, `VIEWER`
+  - Added coarse permission helpers for user management, project management, sprint management, task creation, task transitions, task metadata, and analytics access.
 
 ## Backend Persistence
 
@@ -115,6 +120,7 @@ This file reflects what is present in the repository source tree. It does not ma
   - `V7__Create_sprint_members_table.sql`
   - `V9__Create_projects_and_link_sprints.sql`
   - `V10__Add_task_review_metadata.sql`
+  - `V16__Document_extended_user_roles.sql`
 - Added database tables for:
   - users
   - tasks
@@ -195,6 +201,9 @@ This file reflects what is present in the repository source tree. It does not ma
 - Enforced that sprint create requests include a `projectId`.
 - Enforced that sprint project assignment can only use projects owned by the authenticated user.
 - Exposed `projectId` and `projectName` on sprint API responses.
+- Added admin-assignable roles for Administrator, Project Manager, Developer, QA / Tester, Product Owner, Scrum Master, and Viewer / Stakeholder.
+- Kept self-registration defaulting new users to Developer.
+- Enforced Viewer / Stakeholder as read-only for task creation, task updates, task deletion, and status transitions while preserving optional task comments.
 - Added explicit entity getters/setters so the backend compiles reliably even when Lombok annotation processing is unavailable.
 - Verified backend compilation with:
   - `mvn test` using `JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-25.0.3.9-hotspot`
@@ -269,4 +278,19 @@ This file reflects what is present in the repository source tree. It does not ma
 
 ## Current Implementation Boundary
 
-The repository currently contains backend foundation, domain models, repositories, migrations, security configuration, JWT authentication support, REST controllers, service logic, shared response/error handling, documentation, a first usable frontend implementation, task review metadata, project management, project-linked sprints, and Docker Compose wiring for database, backend, and frontend services. It does not yet contain broad frontend component coverage, backend controller/repository coverage, or CI/CD.
+The repository currently contains backend foundation, domain models, repositories, migrations, security configuration, JWT authentication support, REST controllers, service logic, shared response/error handling, documentation, a first usable frontend implementation, task review metadata, project management, project-linked sprints, and Docker Compose wiring for database, backend, and frontend services. It also now contains project-scoped role assignment through `project_members`, automatic project-manager assignment for project creators, project-manager member administration, and project-role checks for project/sprint/task workflows. It does not yet contain broad frontend component coverage, backend controller/repository coverage, project-member controller integration coverage, or CI/CD.
+
+## Project-Scoped Roles Update
+
+- Added project membership persistence:
+  - `backend/src/main/java/com/taskmanager/entity/ProjectMember.java`
+  - `backend/src/main/java/com/taskmanager/entity/enums/ProjectRole.java`
+  - `backend/src/main/java/com/taskmanager/repository/ProjectMemberRepository.java`
+  - `backend/src/main/resources/db/migration/V17__Create_project_members.sql`
+- Changed self-registration so new users no longer receive a global role.
+- Project creation now creates a `PROJECT_MANAGER` membership for the creator.
+- Project managers can add members, edit project-scoped roles, and remove members.
+- Project, sprint, and sprint-backed task permissions now resolve from project membership roles.
+- Updated frontend project types, project member API hooks, Projects page member-role UI, sprint member selection, and task/sprint controls.
+- Added feature note:
+  - `plan/FEATURE_PROJECT_SCOPED_ROLES.md`

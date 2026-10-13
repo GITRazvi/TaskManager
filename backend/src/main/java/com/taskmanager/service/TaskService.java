@@ -17,10 +17,12 @@ import com.taskmanager.entity.TaskStatusHistory;
 import com.taskmanager.entity.User;
 import com.taskmanager.entity.enums.TaskPriority;
 import com.taskmanager.entity.enums.TaskStatus;
+import com.taskmanager.entity.enums.ProjectRole;
 import com.taskmanager.entity.enums.UserRole;
 import com.taskmanager.exception.AppException;
 import com.taskmanager.exception.ForbiddenException;
 import com.taskmanager.exception.ResourceNotFoundException;
+import com.taskmanager.repository.ProjectMemberRepository;
 import com.taskmanager.repository.SprintRepository;
 import com.taskmanager.repository.TaskCommentRepository;
 import com.taskmanager.repository.TaskRepository;
@@ -57,6 +59,7 @@ public class TaskService {
     private final SprintRepository sprintRepository;
     private final TaskCommentRepository taskCommentRepository;
     private final TaskStatusHistoryRepository taskStatusHistoryRepository;
+    private final ProjectMemberRepository projectMemberRepository;
 
     /**
      * Creates the task service with repositories used for task persistence, user lookup, and sprint ownership checks.
@@ -66,26 +69,45 @@ public class TaskService {
             UserRepository userRepository,
             SprintRepository sprintRepository,
             TaskCommentRepository taskCommentRepository,
-            TaskStatusHistoryRepository taskStatusHistoryRepository
+            TaskStatusHistoryRepository taskStatusHistoryRepository,
+            ProjectMemberRepository projectMemberRepository
     ) {
         this.taskRepository = taskRepository;
         this.userRepository = userRepository;
         this.sprintRepository = sprintRepository;
         this.taskCommentRepository = taskCommentRepository;
         this.taskStatusHistoryRepository = taskStatusHistoryRepository;
+        this.projectMemberRepository = projectMemberRepository;
     }
 
     /**
      * Creates a task for {@code userId}, resolving optional sprint and assignee ids and defaulting status/priority.
      */
     @Transactional
+    public TaskResponse createTask(TaskCreateRequest request, UUID userId) {
+        return createTask(request, userId, (ProjectRole) null);
+    }
+
+    /**
+     * Legacy overload for direct callers that still pass a global role. HTTP paths use project roles.
+     */
+    @Transactional
     public TaskResponse createTask(TaskCreateRequest request, UUID userId, UserRole userRole) {
+        return createTask(request, userId, mapLegacyRole(userRole));
+    }
+
+    private TaskResponse createTask(TaskCreateRequest request, UUID userId, ProjectRole forcedRole) {
         validateDueDate(request.dueDate());
+        if (forcedRole != null) {
+            ensureCanCreateTasks(forcedRole);
+        }
         User user = getUser(userId);
-        validateDeveloperCreateRequest(request, userId, userRole);
+        Sprint sprint = resolveSprint(request.sprintId(), userId);
+        ProjectRole role = forcedRole == null ? roleForSprintOrPersonalBacklog(sprint, userId) : forcedRole;
+        ensureCanCreateTasks(role);
+        validateCreateRequest(request, userId, role);
 
         Task task = new Task();
-        Sprint sprint = resolveSprint(request.sprintId(), userId);
         task.setUser(user);
         task.setTitle(request.title());
         task.setDescription(request.description());
@@ -93,7 +115,7 @@ public class TaskService {
         task.setStatus(TaskStatus.TODO);
         task.setDueDate(request.dueDate());
         task.setSprint(sprint);
-        task.setAssignedTo(resolveAssignedTo(request.assignedToId()));
+        task.setAssignedTo(resolveAssignedTo(request.assignedToId(), sprint));
         task.setReviewer(resolveReviewer(request.reviewerId(), sprint));
         task.setStoryPoints(validateStoryPoints(request.storyPoints()));
         task.setEstimatedHours(validateEstimatedHours(request.estimatedHours()));
@@ -211,11 +233,25 @@ public class TaskService {
      * Applies non-null updates to a visible task, validating title, due date, sprint access, and assignee identity.
      */
     @Transactional
+    public TaskResponse updateTask(UUID taskId, UUID userId, TaskUpdateRequest request) {
+        return updateTask(taskId, userId, request, null);
+    }
+
+    /**
+     * Legacy overload for direct callers that still pass a global role. HTTP paths use project roles.
+     */
+    @Transactional
     public TaskResponse updateTask(UUID taskId, UUID userId, UserRole userRole, TaskUpdateRequest request) {
+        return updateTask(taskId, userId, request, mapLegacyRole(userRole));
+    }
+
+    private TaskResponse updateTask(UUID taskId, UUID userId, TaskUpdateRequest request, ProjectRole forcedRole) {
         validateDueDate(request.dueDate());
         Task task = getVisibleTask(taskId, userId);
-        ensureCanUpdateTask(task, userId, userRole, request);
-        validateTaskUpdatePermissions(request, task, userId, userRole);
+        ProjectRole role = forcedRole == null ? roleForTask(task, userId) : forcedRole;
+        ensureCanModifyTasks(role);
+        ensureCanUpdateTask(task, userId, role, request);
+        validateTaskUpdatePermissions(request, task, userId, role);
 
         if (request.title() != null) {
             if (request.title().isBlank()) {
@@ -241,7 +277,7 @@ public class TaskService {
             task.setSprint(sprintForReviewer);
         }
         if (request.assignedToId() != null) {
-            task.setAssignedTo(resolveAssignedTo(request.assignedToId()));
+            task.setAssignedTo(resolveAssignedTo(request.assignedToId(), sprintForReviewer));
         }
         if (request.reviewerId() != null) {
             task.setReviewer(resolveReviewer(request.reviewerId(), sprintForReviewer));
@@ -305,8 +341,25 @@ public class TaskService {
      * Deletes the task identified by {@code taskId} only when it is owned by {@code userId}.
      */
     @Transactional
+    public void deleteTask(UUID taskId, UUID userId) {
+        deleteTask(taskId, userId, (ProjectRole) null);
+    }
+
+    /**
+     * Legacy overload for direct callers that still pass a global role. HTTP paths use project roles.
+     */
+    @Transactional
     public void deleteTask(UUID taskId, UUID userId, UserRole userRole) {
-        Task task = userRole.canEditAnyVisibleTask() ? getVisibleTask(taskId, userId) : getOwnedTask(taskId, userId);
+        deleteTask(taskId, userId, mapLegacyRole(userRole));
+    }
+
+    private void deleteTask(UUID taskId, UUID userId, ProjectRole forcedRole) {
+        Task task = getVisibleTask(taskId, userId);
+        ProjectRole role = forcedRole == null ? roleForTask(task, userId) : forcedRole;
+        ensureCanModifyTasks(role);
+        if (!role.canEditAnyVisibleTask() && !task.getUser().getId().equals(userId)) {
+            throw new ForbiddenException("This role can only delete tasks they created");
+        }
         taskRepository.delete(task);
     }
 
@@ -315,7 +368,24 @@ public class TaskService {
      */
     @Transactional
     public TaskResponse updateStatus(UUID taskId, UUID userId, TaskStatus status) {
+        return updateStatus(taskId, userId, status, null);
+    }
+
+    /**
+     * Legacy overload for direct callers that still pass a global role. HTTP paths use project roles.
+     */
+    @Transactional
+    public TaskResponse updateStatus(UUID taskId, UUID userId, UserRole userRole, TaskStatus status) {
+        return updateStatus(taskId, userId, status, mapLegacyRole(userRole));
+    }
+
+    private TaskResponse updateStatus(UUID taskId, UUID userId, TaskStatus status, ProjectRole forcedRole) {
+        if (forcedRole != null) {
+            ensureCanTransitionTasks(forcedRole);
+        }
         Task task = getVisibleTask(taskId, userId);
+        ProjectRole role = forcedRole == null ? roleForTask(task, userId) : forcedRole;
+        ensureCanTransitionTasks(role);
         changeStatus(task, status, getUser(userId));
         return TaskResponse.from(task);
     }
@@ -454,11 +524,19 @@ public class TaskService {
     /**
      * Resolves an optional assignee to any active user.
      */
-    private User resolveAssignedTo(UUID assignedToId) {
+    private User resolveAssignedTo(UUID assignedToId, Sprint sprint) {
         if (assignedToId == null) {
             return null;
         }
-        return getUser(assignedToId);
+        User assignee = getUser(assignedToId);
+        if (sprint != null && !projectMemberRepository.existsByProjectIdAndUserId(sprint.getProject().getId(), assignedToId)) {
+            throw new AppException(
+                    HttpStatus.BAD_REQUEST,
+                    "INVALID_TASK_ASSIGNEE",
+                    "Task assignee must belong to the same project"
+            );
+        }
+        return assignee;
     }
 
     /**
@@ -473,13 +551,12 @@ public class TaskService {
             return reviewer;
         }
 
-        boolean isSprintMember = sprint.getUser().getId().equals(reviewerId)
-                || sprint.getParticipants().stream().anyMatch(participant -> participant.getId().equals(reviewerId));
-        if (!isSprintMember) {
+        boolean isProjectMember = projectMemberRepository.existsByProjectIdAndUserId(sprint.getProject().getId(), reviewerId);
+        if (!isProjectMember) {
             throw new AppException(
                     HttpStatus.BAD_REQUEST,
                     "INVALID_TASK_REVIEWER",
-                    "Task reviewer must belong to the same sprint"
+                    "Task reviewer must belong to the same project"
             );
         }
         return reviewer;
@@ -514,31 +591,59 @@ public class TaskService {
         }
     }
 
-    private void validateDeveloperCreateRequest(TaskCreateRequest request, UUID userId, UserRole role) {
-        if (role.canSetTaskMetadata()) {
-            return;
+    private ProjectRole roleForTask(Task task, UUID userId) {
+        Sprint sprint = task.getSprint();
+        if (sprint == null || sprint.getProject() == null) {
+            if (task.getUser().getId().equals(userId)) {
+                return ProjectRole.DEVELOPER;
+            }
+            throw new ForbiddenException("You do not have a role for this task");
         }
-        if (request.assignedToId() != null && !request.assignedToId().equals(userId)) {
-            throw new ForbiddenException("Developers can only assign tasks to themselves");
+        return projectMemberRepository.findRoleByProjectIdAndUserId(sprint.getProject().getId(), userId)
+                .orElseThrow(() -> new ForbiddenException("You do not have a role in this project"));
+    }
+
+    private ProjectRole roleForSprintOrPersonalBacklog(Sprint sprint, UUID userId) {
+        if (sprint == null || sprint.getProject() == null) {
+            return ProjectRole.DEVELOPER;
+        }
+        return projectMemberRepository.findRoleByProjectIdAndUserId(sprint.getProject().getId(), userId)
+                .orElseThrow(() -> new ForbiddenException("You do not have a role in this project"));
+    }
+
+    private ProjectRole mapLegacyRole(UserRole role) {
+        if (role == null) {
+            return null;
+        }
+        return switch (role) {
+            case ADMIN, PROJECT_MANAGER -> ProjectRole.PROJECT_MANAGER;
+            case DEVELOPER -> ProjectRole.DEVELOPER;
+            case QA_TESTER -> ProjectRole.QA_TESTER;
+            case PRODUCT_OWNER -> ProjectRole.PRODUCT_OWNER;
+            case SCRUM_MASTER -> ProjectRole.SCRUM_MASTER;
+            case VIEWER -> ProjectRole.VIEWER;
+        };
+    }
+
+    private void validateCreateRequest(TaskCreateRequest request, UUID userId, ProjectRole role) {
+        if (request.assignedToId() != null && !role.canAssignTasks() && !request.assignedToId().equals(userId)) {
+            throw new ForbiddenException("This role can only assign tasks to themselves");
         }
     }
 
-    private void validateTaskUpdatePermissions(TaskUpdateRequest request, Task task, UUID userId, UserRole role) {
-        if (role.canSetTaskMetadata()) {
-            return;
-        }
+    private void validateTaskUpdatePermissions(TaskUpdateRequest request, Task task, UUID userId, ProjectRole role) {
         if (request.sprintId() != null) {
             UUID currentSprintId = task.getSprint() == null ? null : task.getSprint().getId();
-            if (!request.sprintId().equals(currentSprintId)) {
-                throw new ForbiddenException("Developers cannot move tasks between sprints");
+            if (!request.sprintId().equals(currentSprintId) && !role.canManageSprints()) {
+                throw new ForbiddenException("This role cannot move tasks between sprints");
             }
         }
-        if (request.assignedToId() != null && !request.assignedToId().equals(userId)) {
-            throw new ForbiddenException("Developers can only assign tasks to themselves");
+        if (request.assignedToId() != null && !role.canAssignTasks() && !request.assignedToId().equals(userId)) {
+            throw new ForbiddenException("This role can only assign tasks to themselves");
         }
     }
 
-    private void ensureCanUpdateTask(Task task, UUID userId, UserRole role, TaskUpdateRequest request) {
+    private void ensureCanUpdateTask(Task task, UUID userId, ProjectRole role, TaskUpdateRequest request) {
         if (role.canEditAnyVisibleTask() || task.getUser().getId().equals(userId)) {
             return;
         }
@@ -550,7 +655,25 @@ public class TaskService {
                 && request.comments() == null) {
             return;
         }
-        throw new ForbiddenException("Developers can only edit status and task metadata on visible tasks they did not create");
+        throw new ForbiddenException("This role can only edit status and task metadata on visible tasks they did not create");
+    }
+
+    private void ensureCanCreateTasks(ProjectRole role) {
+        if (!role.canCreateTasks()) {
+            throw new ForbiddenException("Viewers cannot create tasks");
+        }
+    }
+
+    private void ensureCanModifyTasks(ProjectRole role) {
+        if (role == ProjectRole.VIEWER) {
+            throw new ForbiddenException("Viewers cannot modify tasks");
+        }
+    }
+
+    private void ensureCanTransitionTasks(ProjectRole role) {
+        if (!role.canTransitionTasks()) {
+            throw new ForbiddenException("Viewers cannot transition task status");
+        }
     }
 
     /**
@@ -568,10 +691,12 @@ public class TaskService {
             query.distinct(true);
             List<Predicate> predicates = new ArrayList<>();
             var sprintJoin = root.join("sprint", JoinType.LEFT);
+            var projectJoin = sprintJoin.join("project", JoinType.LEFT);
+            var projectMemberJoin = projectJoin.join("members", JoinType.LEFT);
             var participantJoin = sprintJoin.join("participants", JoinType.LEFT);
             predicates.add(criteriaBuilder.or(
                     criteriaBuilder.equal(root.get("user").get("id"), userId),
-                    criteriaBuilder.equal(sprintJoin.get("user").get("id"), userId),
+                    criteriaBuilder.equal(projectMemberJoin.get("user").get("id"), userId),
                     criteriaBuilder.equal(participantJoin.get("id"), userId)
             ));
 
